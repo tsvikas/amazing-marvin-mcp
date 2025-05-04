@@ -41,15 +41,6 @@ wheels = [
 ]
 
 [[package]]
-name = "cheap-repr"
-version = "0.5.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b1/30/f0e9d5bfe80b8287ea8a9263eb3c71c5fdf44b6f7a781a7c96f83172ccad/cheap_repr-0.5.2.tar.gz", hash = "sha256:001a5cf8adb0305c7ad3152c5f776040ac2a559d97f85770cebcb28c6ca5a30f", size = 20232, upload-time = "2024-08-10T14:08:07.314Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ec/52/fec0262af470a157a557e46be1d52ecdaf1695cefd80bb62bb6a07cc4ea9/cheap_repr-0.5.2-py2.py3-none-any.whl", hash = "sha256:537ec1991bfee885c13c6d473afd110a408e039cde26882e95bf92761556ab6e", size = 12228, upload-time = "2024-08-10T14:08:05.965Z" },
-]
-
-[[package]]
 name = "click"
 version = "8.1.8"
 source = { registry = "https://pypi.org/simple" }
@@ -223,19 +214,6 @@ wheels = [
 ]
 
 [[package]]
-name = "loguru"
-version = "0.7.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
-    { name = "win32-setctime", marker = "sys_platform == 'win32'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3a/05/a1dae3dffd1116099471c643b8924f5aa6524411dc6c63fdae648c4f1aca/loguru-0.7.3.tar.gz", hash = "sha256:19480589e77d47b8d85b2c827ad95d49bf31b0dcde16593892eb51dd18706eb6", size = 63559, upload-time = "2024-12-06T11:20:56.608Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/29/0348de65b8cc732daa3e33e67806420b2ae89bdce2b04af740289c5c6c8c/loguru-0.7.3-py3-none-any.whl", hash = "sha256:31a33c10c8e1e10422bfd431aeb5d351c7cf7fa671e3c4df004162264b28220c", size = 61595, upload-time = "2024-12-06T11:20:54.538Z" },
-]
-
-[[package]]
 name = "markdown-it-py"
 version = "3.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -250,9 +228,6 @@ wheels = [
 [[package]]
 name = "marvin-mcp-server"
 source = { editable = "." }
-dependencies = [
-    { name = "loguru" },
-]
 
 [package.dev-dependencies]
 dev = [
@@ -262,14 +237,12 @@ dev = [
     { name = "pre-commit" },
     { name = "ruff" },
     { name = "rust-just" },
-    { name = "snoop" },
 ]
 test = [
     { name = "pytest" },
     { name = "pytest-benchmark" },
     { name = "pytest-clarity" },
     { name = "pytest-cov" },
-    { name = "pytest-loguru" },
     { name = "pytest-reverse" },
     { name = "pytest-xdist", extra = ["psutil"] },
 ]
@@ -278,7 +251,6 @@ typing = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "loguru", specifier = ">=0" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -288,14 +260,12 @@ dev = [
     { name = "pre-commit", specifier = "~=4.0" },
     { name = "ruff", specifier = "~=0.11.0" },
     { name = "rust-just", specifier = "~=1.0" },
-    { name = "snoop", specifier = ">=0.3" },
 ]
 test = [
     { name = "pytest", specifier = "~=8.0" },
     { name = "pytest-benchmark", specifier = "~=5.0" },
     { name = "pytest-clarity", specifier = "~=1.0" },
     { name = "pytest-cov", specifier = "~=6.0" },
-    { name = "pytest-loguru", specifier = ">=0" },
     { name = "pytest-reverse", specifier = "~=1.0" },
     { name = "pytest-xdist", extras = ["psutil"], specifier = "~=3.0" },
 ]
@@ -557,18 +527,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pytest-loguru"
-version = "0.4.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "loguru" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b1/f2/8ca6c8780e714fbfd35d7dcc772af99310272a01457b0887c90c75f2ec52/pytest_loguru-0.4.0.tar.gz", hash = "sha256:0d9e4e72ae9bfd92f774c666e7353766af11b0b78edd59c290e89be116050f03", size = 6696, upload-time = "2024-03-20T00:52:14.16Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/33/ef/b0c2e96e3508bca8d1874e39789d541cd7f4731b38bcf9c7098f0b882001/pytest_loguru-0.4.0-py3-none-any.whl", hash = "sha256:3cc7b9c6b22cb158209ccbabf0d678dacd3f3c7497d6f46f1c338c13bee1ac77", size = 3886, upload-time = "2024-03-20T00:52:12.72Z" },
-]
-
-[[package]]
 name = "pytest-reverse"
 version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -676,21 +634,6 @@ wheels = [
 ]
 
 [[package]]
-name = "snoop"
-version = "0.6.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "asttokens" },
-    { name = "cheap-repr" },
-    { name = "executing" },
-    { name = "pygments" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/67/70/8479d19ec0441279e773521928ad7cad91901c1a3eaf1fc3a0eb92e3cf6e/snoop-0.6.0.tar.gz", hash = "sha256:c615eddf84d8907f893dec7fde38768aa4b1d88d92d63055b6cfc07e5cde37ec", size = 95968, upload-time = "2024-10-06T20:31:03.935Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a5/93/84a16940c44f6ec62cf334f25aed3128a514dffc361397eee09421a1c7f2/snoop-0.6.0-py3-none-any.whl", hash = "sha256:f5ea9060e65594bf404e6841086b4a964cc27bc30569109c91a470f948b0f729", size = 27461, upload-time = "2024-10-06T20:31:02.199Z" },
-]
-
-[[package]]
 name = "stack-data"
 version = "0.6.3"
 source = { registry = "https://pypi.org/simple" }
@@ -743,13 +686,4 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6c/63/53559446a878410fc5a5974feb13d31d78d752eb18aeba59c7fef1af7598/wcwidth-0.2.13.tar.gz", hash = "sha256:72ea0c06399eb286d978fdedb6923a9eb47e1c486ce63e9b4e64fc18303972b5", size = 101301, upload-time = "2024-01-06T02:10:57.829Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fd/84/fd2ba7aafacbad3c4201d395674fc6348826569da3c0937e75505ead3528/wcwidth-0.2.13-py2.py3-none-any.whl", hash = "sha256:3da69048e4540d84af32131829ff948f1e022c1c6bdb8d6102117aac784f6859", size = 34166, upload-time = "2024-01-06T02:10:55.763Z" },
-]
-
-[[package]]
-name = "win32-setctime"
-version = "1.2.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b3/8f/705086c9d734d3b663af0e9bb3d4de6578d08f46b1b101c2442fd9aecaa2/win32_setctime-1.2.0.tar.gz", hash = "sha256:ae1fdf948f5640aae05c511ade119313fb6a30d7eabe25fef9764dca5873c4c0", size = 4867, upload-time = "2024-12-07T15:28:28.314Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e1/07/c6fe3ad3e685340704d314d765b7912993bcb8dc198f0e7a89382d37974b/win32_setctime-1.2.0-py3-none-any.whl", hash = "sha256:95d644c4e708aba81dc3704a116d8cbc974d70b3bdb8be1d150e36be6e9d1390", size = 4083, upload-time = "2024-12-07T15:28:26.465Z" },
 ]
