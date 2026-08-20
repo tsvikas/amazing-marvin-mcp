@@ -46,7 +46,7 @@ def test_path_and_descendants(mirror: Mirror) -> None:
     assert mirror.path("website") == ["Work", "Client A", "Website"]
     assert mirror.path(INBOX) == ["Inbox"]
     assert mirror.path("root") == []
-    assert mirror.descendants("work") == {"work", "clientA", "website", "oldproj"}
+    assert mirror.descendants("work") == {"work", "client-a", "website", "oldproj"}
 
 
 def test_path_is_cycle_safe(mirror: Mirror) -> None:
@@ -59,7 +59,7 @@ def test_resolve_parent(mirror: Mirror) -> None:
     assert mirror.resolve_parent("Inbox") == INBOX
     assert mirror.resolve_parent("website") == "website"
     assert mirror.resolve_parent("WEBSITE") == "website"
-    assert mirror.resolve_parent("client") == "clientA"
+    assert mirror.resolve_parent("client") == "client-a"
     with pytest.raises(NotFoundError):
         mirror.resolve_parent("nope")
     mirror.docs["dup"] = {

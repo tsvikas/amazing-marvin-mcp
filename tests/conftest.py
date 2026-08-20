@@ -30,10 +30,14 @@ def docs() -> list[JsonObj]:
             "Categories", "home", type="category", title="Home", parentId="root", rank=2
         ),
         doc(
-            "Categories", "clientA", type="category", title="Client A", parentId="work"
+            "Categories", "client-a", type="category", title="Client A", parentId="work"
         ),
         doc(
-            "Categories", "website", type="project", title="Website", parentId="clientA"
+            "Categories",
+            "website",
+            type="project",
+            title="Website",
+            parentId="client-a",
         ),
         doc(
             "Categories",
