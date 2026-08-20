@@ -792,7 +792,8 @@ def create_server(
             list[str] | None, Field(description="subtask ids or titles to mark done")
         ] = None,
         reopen: Annotated[
-            list[str] | None, Field(description="subtask ids or titles to un-complete")
+            list[str] | None,
+            Field(description="subtask ids or titles to mark not done"),
         ] = None,
         remove: Annotated[
             list[str] | None, Field(description="subtask ids or titles to delete")
