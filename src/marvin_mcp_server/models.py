@@ -8,10 +8,15 @@ of breaking parsing, and are preserved when a document is echoed back.
 Conventions worth remembering (all from the wiki):
 
 * ``parentId == "unassigned"`` is the Inbox, ``"root"`` is the top level.
-* ``day`` is *when you plan to do it*; ``dueDate`` is a hard deadline;
-  ``endDate`` a soft one. ``day == "unassigned"``/``None`` means unscheduled.
+* UI names for the dates: ``day`` = **Do date** (the day you plan to do it,
+  "scheduled"); ``dueDate`` = **Due date** (hard, external deadline);
+  ``endDate`` = **End date** (self-imposed target, also set by Planning Ahead);
+  ``startDate`` = **Start date** (backburner until then).
+  ``day == "unassigned"``/``None``/``""`` means unscheduled.
 * ``timeEstimate`` is in milliseconds.
-* ``isStarred``/``isFrogged`` are ``bool`` (legacy) or ``1..3``.
+* ``isStarred`` = **Importance**: 3 = P1 (red), 2 = P2 (orange), 1 = P3 (yellow),
+  ``True`` = plain star in standard mode. ``isFrogged`` = **Eat the Frog**:
+  1 = frog, 2 = baby frog, 3 = monster frog.
 * Projects and categories share ``db == "Categories"``; ``type`` tells them apart.
 """
 
@@ -20,7 +25,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 INBOX = "unassigned"
 ROOT = "root"
@@ -31,6 +36,14 @@ JsonObj = dict[str, object]
 
 class _Doc(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_empty(cls, data: object) -> object:
+        """Marvin writes ``null``/``""`` for unset fields; let the defaults apply."""
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if v is not None and v != ""}
+        return data
 
     id: str = Field(alias="_id")
     rev: str | None = Field(default=None, alias="_rev")
@@ -89,13 +102,23 @@ class _Item(_Doc):
 
     @property
     def due(self) -> date | None:
-        """``dueDate`` as a date."""
+        """``dueDate`` (UI: Due date, a hard deadline) as a date."""
         return _parse_date(self.due_date)
 
     @property
+    def end(self) -> date | None:
+        """``endDate`` (UI: End date, a self-imposed target) as a date."""
+        return _parse_date(self.end_date)
+
+    @property
+    def start(self) -> date | None:
+        """``startDate`` (UI: Start date, hidden on the backburner until then)."""
+        return _parse_date(self.start_date)
+
+    @property
     def estimate_minutes(self) -> float | None:
-        """Time estimate in minutes."""
-        if self.time_estimate is None:
+        """Duration estimate in minutes; Marvin stores "no estimate" as ``0``."""
+        if not self.time_estimate:
             return None
         return self.time_estimate / MS_PER_MINUTE
 
@@ -115,7 +138,7 @@ class Task(_Item):
     done_at: float | None = Field(default=None, alias="doneAt")
     subtasks: dict[str, Subtask] = Field(default_factory=dict)
     depends_on: dict[str, bool] = Field(default_factory=dict, alias="dependsOn")
-    daily_section: str | None = Field(default=None, alias="dailySection")
+    daily_section: str | int | None = Field(default=None, alias="dailySection")
     duration: float | None = None
     times: list[float] = Field(default_factory=list)
 

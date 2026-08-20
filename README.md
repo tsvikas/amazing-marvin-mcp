@@ -35,13 +35,17 @@ the REST API, which handles Marvin's conflict-resolution bookkeeping
 
 ### What the assistant knows
 
-- **Marvin semantics** are built in: Inbox is `parentId="unassigned"`,
-  categories/projects nest arbitrarily, `day` (scheduled) vs `dueDate`
-  (deadline), estimates in minutes, stars/frogs/backburner, labels and label
+- **Marvin semantics**, in the UI's own words. Inbox = not filed anywhere;
+  categories and projects nest arbitrarily (the Master List). The four dates
+  are kept apart: **Do date** (the day you plan to do it, "scheduled"),
+  **Due date** (hard external deadline), **End date** (self-imposed target;
+  Planning Ahead's planned week/month is the softer form), **Start date**
+  (hidden on the Backburner until then). Plus Duration estimates (minutes),
+  Importance (P1–P3 stars), Eat-the-Frog, Backburner, labels and label
   groups.
 - **Your structure** (`get_structure`): the category/project tree with ids and
   open-task counts, labels by group, and which Marvin strategies you have
-  enabled.
+  enabled (by their names in the Strategies screen).
 - **Your workflow** (`workflow.md`): how *you* use Marvin: what labels mean,
   how you plan, your inbox-triage checklist, what "short win" means. Marvin is
   flexible, so this file is what lets the assistant act the way you would.
@@ -49,20 +53,20 @@ the REST API, which handles Marvin's conflict-resolution bookkeeping
 
 ### Tools
 
-| Tool                                    | What it does                                                                      |
-| --------------------------------------- | --------------------------------------------------------------------------------- |
-| `get_structure`                         | Category/project tree with ids, labels by group, strategies in use                |
-| `list_inbox`                            | Open inbox tasks, oldest first                                                    |
-| `list_today [day]`                      | Scheduled that day, scheduled earlier but not done, due by then                   |
-| `list_due [by]`                         | Open tasks due by a date (`week`, `month`, `YYYY-MM-DD`)                          |
-| `search_tasks …`                        | Any combination of text, parent, labels, schedule window, due-by, estimate, flags |
-| `get_task id`                           | Full detail incl. note, subtasks, dates, unmodelled fields                        |
-| `list_children parent`                  | Direct tasks and sub-projects of a project/category                               |
-| `create_task` / `create_project`        | Names for parent/labels are resolved for you                                      |
-| `update_task id …`                      | Rename, move, relabel, (re)schedule, deadline, estimate, note, stars, clear…      |
-| `mark_done id`                          | Complete a task/project                                                           |
-| `sync_marvin`                           | Force a mirror refresh                                                            |
-| Prompts: `triage_inbox`, `daily_review` | Built from your workflow file                                                     |
+| Tool                                    | What it does                                                                     |
+| --------------------------------------- | -------------------------------------------------------------------------------- |
+| `get_structure`                         | Category/project tree with ids, labels by group, strategies in use               |
+| `list_inbox`                            | Open inbox tasks, oldest first                                                   |
+| `list_today [day]`                      | Do date that day, do date earlier but not done, due by then                      |
+| `list_due [by]`                         | Open tasks with a due date by a date (`week`, `month`, `YYYY-MM-DD`)             |
+| `search_tasks …`                        | Any mix of text, parent, labels, do-date window, due/end by, estimate, flags     |
+| `get_task id`                           | Full detail incl. note, subtasks, dates, unmodelled fields                       |
+| `list_children parent`                  | Direct tasks and sub-projects of a project/category                              |
+| `create_task` / `create_project`        | Names for parent/labels are resolved for you                                     |
+| `update_task id …`                      | Rename, move, relabel, do/due/end/start date, estimate, note, importance, clear… |
+| `mark_done id`                          | Complete a task/project                                                          |
+| `sync_marvin`                           | Force a mirror refresh                                                           |
+| Prompts: `triage_inbox`, `daily_review` | Built from your workflow file                                                    |
 
 There is deliberately no delete tool: Marvin's trash is client-side, so API
 deletes are unrecoverable.
@@ -75,8 +79,8 @@ uv tool install git+https://github.com/tsvikas/marvin-mcp-server.git
 
 ## Setup
 
-1. **Credentials.** Open <https://app.amazingmarvin.com/pre?api> (or Marvin's
-   *API* strategy settings) and export:
+1. **Credentials.** In Marvin, enable the *API* strategy (Strategies → API →
+   settings) and export its values:
 
    ```bash
    export MARVIN_API_TOKEN=...           # create / mark done

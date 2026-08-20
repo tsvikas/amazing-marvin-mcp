@@ -38,8 +38,8 @@ def test_labels_and_groups_from_profile(mirror: Mirror) -> None:
     assert groups[0].is_exclusive
 
 
-def test_strategy_settings(mirror: Mirror) -> None:
-    assert "timeEstimates" in mirror.strategy_settings()
+def test_enabled_strategies_use_ui_names(mirror: Mirror) -> None:
+    assert mirror.enabled_strategies() == ["orbit", "Duration Estimates"]
 
 
 def test_path_and_descendants(mirror: Mirror) -> None:
@@ -125,6 +125,9 @@ def test_search_schedule_and_due(mirror: Mirror) -> None:
         "Fix header CSS",
         "Taxes",
     }
+    assert titles(mirror.search(TaskFilter(end_by=date(2026, 8, 25)))) == {
+        "Fix header CSS"
+    }
 
 
 def test_search_estimates_flags_text(mirror: Mirror) -> None:
@@ -139,6 +142,7 @@ def test_search_estimates_flags_text(mirror: Mirror) -> None:
     assert titles(mirror.search(TaskFilter(has_estimate=False, parent_id="home"))) == {
         "Taxes"
     }
+    assert mirror.task("t-due").estimate_minutes is None  # 0 means "no estimate"
     assert titles(mirror.search(TaskFilter(starred=True))) == {"Fix header CSS"}
     assert titles(mirror.search(TaskFilter(frogged=True))) == {"Someday maybe"}
     assert titles(mirror.search(TaskFilter(backburner=False, parent_id="work"))) == {
@@ -151,6 +155,14 @@ def test_search_estimates_flags_text(mirror: Mirror) -> None:
 def test_search_sorted_by_day_then_rank(mirror: Mirror) -> None:
     found = mirror.search(TaskFilter(parent_id="website"))
     assert [t.title for t in found] == ["Deploy site", "Fix header CSS"]
+
+
+def test_empty_and_null_fields_use_defaults(mirror: Mirror) -> None:
+    task = mirror.task("t-web1")
+    assert task.times == []
+    assert task.planned_week is None
+    assert task.daily_section == 0
+    assert task.end == date(2026, 8, 25)
 
 
 def test_task_lookup(mirror: Mirror) -> None:

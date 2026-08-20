@@ -136,7 +136,7 @@ async def test_structure(server: MCPServer[None]) -> None:
     groups = {g["group"]: [lb["title"] for lb in g["labels"]] for g in out["labels"]}
     assert groups["Energy"] == ["high-energy", "low-energy"]
     assert groups[None] == ["short-win"]
-    assert "timeEstimates" in out["strategy_settings_keys"]
+    assert out["enabled_strategies"] == ["orbit", "Duration Estimates"]
 
 
 @pytest.mark.anyio
@@ -175,7 +175,8 @@ async def test_get_task_detail(server: MCPServer[None]) -> None:
     out = await call(server, "get_task", task_id="t-web1")
     assert out["note"] == "See the bug report.\nSecond line."
     assert out["parent"] == "Work > Client A > Website"
-    assert out["star"] == 2
+    assert out["importance"] == 2
+    assert out["end_date"] == "2026-08-25"
     assert out["parent_id"] == "website"
 
 
@@ -196,9 +197,10 @@ async def test_create_task_payload(server: MCPServer[None], fake: FakeMarvin) ->
         title="Rotate tires #not-a-project",
         parent="Home",
         labels=["car"],
-        day="2026-09-01",
+        do_date="2026-09-01",
         estimate_minutes=30,
-        star=1,
+        importance=1,
+        end_date="2026-09-05",
     )
     assert out["created"] == "created-id"
     path, body = fake.requests[0]
@@ -210,6 +212,10 @@ async def test_create_task_payload(server: MCPServer[None], fake: FakeMarvin) ->
     assert body["isStarred"] == 1
     assert body["done"] is False
     assert "timeZoneOffset" in body
+    # end date is not consumed by addTask, so it goes through doc/update
+    path2, body2 = fake.requests[1]
+    assert path2 == "/api/doc/update"
+    assert {s["key"]: s["val"] for s in body2["setters"]}["endDate"] == "2026-09-05"
 
 
 @pytest.mark.anyio
@@ -224,7 +230,7 @@ async def test_update_task_labels_and_clear(
         add_labels=["car"],
         remove_labels=["low-energy"],
         parent="inbox",
-        clear=["day", "estimate"],
+        clear=["do_date", "estimate"],
     )
     _, body = fake.requests[0]
     changes = {s["key"]: s["val"] for s in body["setters"]}

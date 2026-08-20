@@ -24,6 +24,35 @@ if TYPE_CHECKING:
 LABELS_DOC = "strategySettings.labels"
 LABEL_GROUPS_DOC = "strategySettings.labelSettings.groups"
 
+# profile `strategies.<key>` -> name shown in Marvin's Strategies screen
+STRATEGY_NAMES = {
+    "labels": "Task Labels",
+    "timeEstimates": "Duration Estimates",
+    "priorities": "Importance Levels",
+    "eatFrog": "Eat the Frog",
+    "backburner": "Backburner",
+    "dayPlanning": "Day Planning",
+    "weekView": "Week Scheduler",
+    "autoDueTasks": "Auto-schedule due Tasks",
+    "MIP": "Most Important Projects",
+    "reminders": "Reminders",
+    "subtasks": "Subtasks",
+    "notes": "Task and Project Notes",
+    "energyLevel": "Energy",
+    "mentalWeight": "Weight",
+    "fireUrgency": "Urgency",
+    "positiveEnergy": "Positive Feelings",
+    "braindump": "Braindump",
+    "calendar": "Calendar",
+    "events": "Events",
+    "timers": "Timers",
+    "marvinPoints": "Marvin Kudos",
+    "sfm": "Super Focus Mode",
+    "projectShortcuts": "Project Shortcuts",
+    "taskHints": "Task Hints",
+    "categoryIndicators": "Category Context",
+}
+
 
 class NotFoundError(LookupError):
     """No item matches the given id or name."""
@@ -46,6 +75,7 @@ class TaskFilter:
     unscheduled: bool | None = None
     due_by: date | None = None
     has_due_date: bool | None = None
+    end_by: date | None = None
     min_minutes: float | None = None
     max_minutes: float | None = None
     has_estimate: bool | None = None
@@ -76,6 +106,9 @@ class TaskFilter:
         if self.has_due_date is not None and (due is not None) != self.has_due_date:
             return False
         if self.due_by is not None and (due is None or due > self.due_by):
+            return False
+        end = task.end
+        if self.end_by is not None and (end is None or end > self.end_by):
             return False
         minutes = task.estimate_minutes
         if self.has_estimate is not None and (minutes is not None) != self.has_estimate:
@@ -193,14 +226,17 @@ class Mirror:
             (LabelGroup.model_validate(g) for g in raw_groups), key=lambda g: g.rank
         )
 
-    def strategy_settings(self) -> dict[str, object]:
-        """``strategySettings.*`` profile docs: which Marvin features are in use."""
-        prefix = "strategySettings."
-        return {
-            doc_id.removeprefix(prefix): doc.get("val")
+    def enabled_strategies(self) -> list[str]:
+        """Marvin strategies switched on, by their UI names (``strategies.*`` docs)."""
+        prefix = "strategies."
+        keys = sorted(
+            doc_id.removeprefix(prefix)
             for doc_id, doc in self.docs.items()
-            if doc_id.startswith(prefix) and doc.get("db") == "ProfileItems"
-        }
+            if doc_id.startswith(prefix)
+            and doc.get("db") == "ProfileItems"
+            and doc.get("val")
+        )
+        return [STRATEGY_NAMES.get(k, k) for k in keys]
 
     # --- lookups --------------------------------------------------------------------
     def task(self, task_id: str) -> Task:

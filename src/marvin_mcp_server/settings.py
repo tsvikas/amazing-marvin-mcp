@@ -1,6 +1,6 @@
 """Configuration, from environment variables (prefix ``MARVIN_``) or a ``.env`` file.
 
-All credentials come from https://app.amazingmarvin.com/pre?api.
+All credentials come from Marvin's API strategy settings (Strategies → API).
 """
 
 from pathlib import Path

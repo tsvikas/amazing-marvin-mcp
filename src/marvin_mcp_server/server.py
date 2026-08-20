@@ -1,8 +1,10 @@
 """The MCP server: tools, resources and prompts over the mirror and the REST API.
 
 Tools are shaped around what a person asks ("what's in my inbox", "what's due
-this week", "rename X") rather than around Marvin's endpoints. Anything
-opinionated about *how* to triage or plan is left to the user's workflow file.
+this week", "rename X") rather than around Marvin's endpoints, and use the
+names Marvin's UI uses (Do date, Due date, End date, Importance, Duration
+estimate, Backburner...). Anything opinionated about *how* to triage or plan is
+left to the user's workflow file.
 """
 
 from __future__ import annotations
@@ -37,21 +39,28 @@ _NOISE = frozenset({"_rev", "db", "fieldUpdates", "rank", "masterRank", "_id"})
 GENERIC_INSTRUCTIONS = """\
 You are connected to the user's Amazing Marvin task manager.
 
-Marvin vocabulary (as the tools use it):
-- Inbox = items whose parent is "unassigned". Items live in a tree of
-  categories (folders, arbitrarily nested) and projects (nested anywhere, can
-  contain tasks and sub-projects). `get_structure` shows the whole tree with ids.
-- `day` = the date the user plans to *do* it ("scheduled"). `due_date` = a hard
-  deadline. Planned week/month are softer commitments. A task can be scheduled
-  without a due date and vice versa.
-- Time estimates are shown in minutes. Stars = priority 1-3, frogs = dreaded
-  tasks 1-3, backburner = deliberately parked.
+Marvin vocabulary (the tools use the same names as Marvin's UI):
+- Inbox = items not yet filed anywhere (parent "unassigned"). Everything else
+  lives in a tree of categories (folders, arbitrarily nested) and projects
+  (nested anywhere; hold tasks and sub-projects). `get_structure` shows the
+  tree with ids. The Master List is that whole tree.
+- Dates are four different things:
+  * Do date (`do_date`) = the day the user plans to *do* it; "scheduled".
+  * Due date (`due_date`) = a hard, external deadline. Rare and serious.
+  * End date (`end_date`) = a self-imposed target, "artificial deadline";
+    Planning Ahead (planned week / planned month) is the softer version.
+  * Start date (`start_date`) = hidden on the backburner until that day.
+  Don't translate one into another: "deadline" usually means due date; "I
+  want this done by" usually means end date or planned week.
+- Duration estimate = `estimate_min` (minutes). Importance = stars:
+  3 = P1 (red), 2 = P2 (orange), 1 = P3 (yellow). Frog = Eat-the-Frog
+  dreaded task, 1-3. Backburner = deliberately parked / not now.
 - Labels are free-form and user-defined; their meaning is in the workflow
-  section below, not in Marvin.
+  section below, not in Marvin. Label groups can be exclusive (one per group).
 
-Reads come from a local mirror that is refreshed at most once a minute; call
+Reads come from a local mirror refreshed at most once a minute; call
 `sync_marvin` if the user says they just changed something in Marvin.
-Writes are rate-limited (about one per 3 seconds); for bulk edits, go item by
+Writes are rate-limited (about one per 3 seconds); for bulk edits go item by
 item and tell the user it takes a moment rather than stopping.
 Prefer `search_tasks` for any filtering question; use `get_task` before editing
 so you see the current state. Never guess ids: resolve names via
@@ -146,9 +155,13 @@ def parse_day(value: str, *, base: date | None = None) -> date:  # noqa: PLR0911
             return date.fromisoformat(word)
 
 
+def _opt_day(value: str | None) -> str | None:
+    return None if value is None else parse_day(value).isoformat()
+
+
 # --- rendering ------------------------------------------------------------------------
 def _compact(obj: JsonObj) -> JsonObj:
-    return {k: v for k, v in obj.items() if v not in (None, False, [], "", {})}
+    return {k: v for k, v in obj.items() if v not in (None, False, [], "", {}, 0)}
 
 
 def task_summary(mirror: Mirror, task: Task) -> JsonObj:
@@ -162,12 +175,14 @@ def task_summary(mirror: Mirror, task: Task) -> JsonObj:
             "title": task.title,
             "parent": " > ".join(mirror.path(task.parent_id)),
             "labels": [labels.get(i, i) for i in task.label_ids],
-            "day": task.day if task.day != INBOX else None,
+            "do_date": task.day if task.day != INBOX else None,
             "due_date": task.due_date,
+            "end_date": task.end_date,
+            "start_date": task.start_date,
             "planned_week": task.planned_week,
             "planned_month": task.planned_month,
             "estimate_min": task.estimate_minutes,
-            "star": task.star_level,
+            "importance": task.star_level,
             "frog": task.frog_level,
             "backburner": task.backburner,
             "done": task.done,
@@ -192,8 +207,6 @@ def task_detail(mirror: Mirror, task: Task) -> JsonObj:
             {
                 "parent_id": task.parent_id,
                 "note": task.note,
-                "start_date": task.start_date,
-                "end_date": task.end_date,
                 "review_date": task.review_date,
                 "daily_section": task.daily_section,
                 "first_scheduled": task.first_scheduled,
@@ -210,7 +223,11 @@ def task_detail(mirror: Mirror, task: Task) -> JsonObj:
                 "created_at": _iso(task.created_at),
                 "updated_at": _iso(task.updated_at),
                 "done_at": _iso(task.done_at),
-                "other_fields": {k: v for k, v in extra.items() if k not in _NOISE},
+                "other_fields": {
+                    k: v
+                    for k, v in extra.items()
+                    if k not in _NOISE and v not in (None, "", 0, False, [], {})
+                },
             }
         )
     )
@@ -218,7 +235,7 @@ def task_detail(mirror: Mirror, task: Task) -> JsonObj:
 
 
 def _iso(ms: float | None) -> str | None:
-    if ms is None:
+    if not ms:
         return None
     return datetime.fromtimestamp(ms / 1000).astimezone().isoformat(timespec="minutes")
 
@@ -255,7 +272,7 @@ def structure(mirror: Mirror) -> JsonObj:
                 "title": cat.title,
                 "type": cat.type,
                 "open_tasks": open_counts.get(cat.id, 0),
-                "day": cat.day if cat.is_project else None,
+                "do_date": cat.day if cat.is_project else None,
                 "due_date": cat.due_date if cat.is_project else None,
                 "done": cat.done if cat.is_project else None,
                 "children": [node(c) for c in kids],
@@ -281,7 +298,7 @@ def structure(mirror: Mirror) -> JsonObj:
         "inbox_open_tasks": open_counts.get(INBOX, 0),
         "tree": [node(c) for c in roots],
         "labels": labels,
-        "strategy_settings_keys": sorted(mirror.strategy_settings()),
+        "enabled_strategies": mirror.enabled_strategies(),
         "mirror": {"documents": len(mirror.docs), "age_seconds": round(mirror.age)},
     }
 
@@ -319,7 +336,7 @@ def create_server(
         if not mirror.docs:
             raise RuntimeError(
                 "The mirror is empty. Configure MARVIN_SYNC_* credentials "
-                "(https://app.amazingmarvin.com/pre?api) and run `marvin-mcp-server sync`."
+                "(Marvin → Strategies → API → settings) and run `marvin-mcp-server sync`."
             )
         return mirror
 
@@ -340,9 +357,9 @@ def create_server(
         return (
             "Let's triage my Marvin inbox. Call `list_inbox`, then take items one at "
             "a time: propose the changes my workflow calls for (title, labels, "
-            "estimate, parent, schedule, deadline), ask me only when genuinely "
-            "unclear, apply with `update_task`, then move to the next item.\n\n"
-            f"{workflow_resource()}"
+            "estimate, parent, do date / end date, deadline), ask me only when "
+            "genuinely unclear, apply with `update_task`, then move to the next "
+            f"item.\n\n{workflow_resource()}"
         )
 
     @mcp.prompt()
@@ -362,7 +379,7 @@ def create_server(
 
     @mcp.tool()
     async def get_structure() -> JsonObj:
-        """Category/project tree with ids and open-task counts, labels grouped, strategies in use.
+        """Category/project tree with ids and open-task counts, labels by group, strategies in use.
 
         Call this once at the start of a session; it is how you map names to ids.
         """
@@ -370,7 +387,7 @@ def create_server(
 
     @mcp.tool()
     async def list_inbox(limit: int = 50) -> JsonObj:
-        """Open tasks in the Inbox (parent 'unassigned'), oldest first."""
+        """Open tasks in the Inbox (not filed in any category/project), oldest first."""
         m = await fresh()
         tasks = m.search(TaskFilter(parent_id=INBOX, include_descendants=False))
         tasks.sort(key=lambda t: t.created_at or 0)
@@ -378,7 +395,7 @@ def create_server(
 
     @mcp.tool()
     async def list_today(day: str = "today") -> JsonObj:
-        """What's on for a day: scheduled that day, scheduled earlier but not done, and due by then.
+        """What's on for a day: do date that day, do date earlier but not done, due by then.
 
         Args:
             day: YYYY-MM-DD or today/tomorrow/yesterday.
@@ -397,7 +414,7 @@ def create_server(
 
     @mcp.tool()
     async def list_due(by: str = "week", limit: int = 100) -> JsonObj:
-        """Open tasks with a due date on or before a day (default: end of this week).
+        """Open tasks with a Due date on or before a day (default: end of this week).
 
         Args:
             by: YYYY-MM-DD, today, tomorrow, week, next-week, month.
@@ -422,20 +439,31 @@ def create_server(
             list[str] | None, Field(description="label names or ids; all must match")
         ] = None,
         scheduled_from: Annotated[
-            str | None, Field(description="YYYY-MM-DD or today…")
+            str | None, Field(description="do date >= (YYYY-MM-DD or today…)")
         ] = None,
         scheduled_to: Annotated[
-            str | None, Field(description="YYYY-MM-DD or today…")
+            str | None, Field(description="do date <= (YYYY-MM-DD or today…)")
         ] = None,
-        unscheduled: bool | None = None,
+        unscheduled: Annotated[
+            bool | None, Field(description="True = no do date")
+        ] = None,
         due_by: Annotated[
-            str | None, Field(description="YYYY-MM-DD, week, month…")
+            str | None, Field(description="due date <= (YYYY-MM-DD, week, month…)")
         ] = None,
         has_due_date: bool | None = None,
-        min_minutes: float | None = None,
-        max_minutes: float | None = None,
+        end_by: Annotated[
+            str | None, Field(description="end date <= (YYYY-MM-DD, week, month…)")
+        ] = None,
+        min_minutes: Annotated[
+            float | None, Field(description="duration estimate >=")
+        ] = None,
+        max_minutes: Annotated[
+            float | None, Field(description="duration estimate <=")
+        ] = None,
         has_estimate: bool | None = None,
-        starred: bool | None = None,
+        important: Annotated[
+            bool | None, Field(description="has any importance star")
+        ] = None,
         frogged: bool | None = None,
         backburner: bool | None = None,
         done: Annotated[
@@ -443,7 +471,7 @@ def create_server(
         ] = False,
         limit: int = 50,
     ) -> JsonObj:
-        """Find tasks by any combination of filters (all ANDed). Unset filters are ignored.
+        """Find tasks by any combination of filters (all ANDead). Unset filters are ignored.
 
         This is the tool for "what can I do in 5 minutes", "everything tagged X",
         "what's scheduled this week in project Y", etc.
@@ -459,10 +487,11 @@ def create_server(
             unscheduled=unscheduled,
             due_by=parse_day(due_by) if due_by else None,
             has_due_date=has_due_date,
+            end_by=parse_day(end_by) if end_by else None,
             min_minutes=min_minutes,
             max_minutes=max_minutes,
             has_estimate=has_estimate,
-            starred=starred,
+            starred=important,
             frogged=frogged,
             backburner=backburner,
             done=done,
@@ -485,7 +514,9 @@ def create_server(
         return {
             "parent": " > ".join(m.path(pid)),
             "subprojects": [
-                _compact({"id": c.id, "title": c.title, "type": c.type, "day": c.day})
+                _compact(
+                    {"id": c.id, "title": c.title, "type": c.type, "do_date": c.day}
+                )
                 for c in sorted(subs, key=lambda c: c.rank)
             ],
         } | _summaries(m, tasks, limit)
@@ -498,17 +529,26 @@ def create_server(
             str, Field(description="project/category id or name")
         ] = "inbox",
         labels: list[str] | None = None,
-        day: Annotated[
-            str | None, Field(description="schedule: YYYY-MM-DD or today…")
+        do_date: Annotated[
+            str | None, Field(description="day to do it: YYYY-MM-DD or today…")
         ] = None,
-        due_date: str | None = None,
+        due_date: Annotated[str | None, Field(description="hard deadline")] = None,
+        end_date: Annotated[
+            str | None, Field(description="self-imposed target (needs full access)")
+        ] = None,
+        start_date: Annotated[
+            str | None, Field(description="hidden until then (needs full access)")
+        ] = None,
         estimate_minutes: float | None = None,
         note: str | None = None,
-        star: Annotated[int, Field(ge=0, le=3)] = 0,
+        importance: Annotated[
+            int, Field(ge=0, le=3, description="3=P1 red, 2=P2, 1=P3/star")
+        ] = 0,
         frog: Annotated[int, Field(ge=0, le=3)] = 0,
         planned_week: Annotated[
             str | None, Field(description="Monday, YYYY-MM-DD")
         ] = None,
+        planned_month: Annotated[str | None, Field(description="YYYY-MM")] = None,
         backburner: bool = False,
     ) -> JsonObj:
         """Create a task. Names for parent/labels are resolved here; don't use #/@ shortcuts."""
@@ -520,21 +560,29 @@ def create_server(
                 "labelIds": [m.resolve_label(lb).id for lb in labels]
                 if labels
                 else None,
-                "day": parse_day(day).isoformat() if day else None,
-                "dueDate": parse_day(due_date).isoformat() if due_date else None,
+                "day": _opt_day(do_date),
+                "dueDate": _opt_day(due_date),
                 "timeEstimate": _ms(estimate_minutes),
                 "note": note,
-                "isStarred": star or None,
+                "isStarred": importance or None,
                 "isFrogged": frog or None,
                 "plannedWeek": planned_week,
+                "plannedMonth": planned_month,
                 "backburner": backburner,
-                "timeZoneOffset": tz_offset_minutes(),
             }
         )
         payload["done"] = False
+        payload["timeZoneOffset"] = tz_offset_minutes()
         result = await api.add_task(payload)
         _absorb(mirror, result)
-        return {"created": result.get("_id"), "title": title}
+        new_id = result.get("_id")
+        # addTask ignores start/end dates; set them with a follow-up edit.
+        follow_up: JsonObj = _compact(
+            {"endDate": _opt_day(end_date), "startDate": _opt_day(start_date)}
+        )
+        if follow_up and isinstance(new_id, str):
+            mirror.apply(await api.update_doc(new_id, follow_up))
+        return {"created": new_id, "title": title}
 
     @mcp.tool()
     async def create_project(
@@ -543,7 +591,7 @@ def create_server(
             str, Field(description="category/project id or name")
         ] = "inbox",
         labels: list[str] | None = None,
-        day: str | None = None,
+        do_date: str | None = None,
         due_date: str | None = None,
         note: str | None = None,
         priority: Annotated[str | None, Field(description="low, mid, high")] = None,
@@ -557,14 +605,14 @@ def create_server(
                 "labelIds": [m.resolve_label(lb).id for lb in labels]
                 if labels
                 else None,
-                "day": parse_day(day).isoformat() if day else None,
-                "dueDate": parse_day(due_date).isoformat() if due_date else None,
+                "day": _opt_day(do_date),
+                "dueDate": _opt_day(due_date),
                 "note": note,
                 "priority": priority,
-                "timeZoneOffset": tz_offset_minutes(),
             }
         )
         payload["done"] = False
+        payload["timeZoneOffset"] = tz_offset_minutes()
         result = await api.add_project(payload)
         _absorb(mirror, result)
         return {"created": result.get("_id"), "title": title}
@@ -581,8 +629,16 @@ def create_server(
         ] = None,
         add_labels: list[str] | None = None,
         remove_labels: list[str] | None = None,
-        day: Annotated[str | None, Field(description="YYYY-MM-DD, today…")] = None,
-        due_date: str | None = None,
+        do_date: Annotated[
+            str | None, Field(description="day to do it: YYYY-MM-DD, today…")
+        ] = None,
+        due_date: Annotated[str | None, Field(description="hard deadline")] = None,
+        end_date: Annotated[
+            str | None, Field(description="self-imposed target")
+        ] = None,
+        start_date: Annotated[
+            str | None, Field(description="hidden until then")
+        ] = None,
         estimate_minutes: float | None = None,
         note: Annotated[
             str | None, Field(description="replace the note (markdown)")
@@ -590,21 +646,26 @@ def create_server(
         append_note: Annotated[
             str | None, Field(description="add to the end of the note")
         ] = None,
-        star: Annotated[int | None, Field(ge=0, le=3)] = None,
+        importance: Annotated[
+            int | None,
+            Field(ge=0, le=3, description="3=P1 red, 2=P2, 1=P3/star, 0=none"),
+        ] = None,
         frog: Annotated[int | None, Field(ge=0, le=3)] = None,
         backburner: bool | None = None,
-        planned_week: str | None = None,
+        planned_week: Annotated[
+            str | None, Field(description="Monday, YYYY-MM-DD")
+        ] = None,
         planned_month: Annotated[str | None, Field(description="YYYY-MM")] = None,
         review_date: str | None = None,
         clear: Annotated[
             list[str] | None,
             Field(
-                description="fields to unset: day, due_date, estimate, note, planned_week, "
-                "planned_month, review_date"
+                description="fields to unset: do_date, due_date, end_date, start_date, "
+                "estimate, note, planned_week, planned_month, review_date"
             ),
         ] = None,
     ) -> JsonObj:
-        """Edit a task or project: rename, move, relabel, (re)schedule, set deadline/estimate/note.
+        """Edit a task or project: rename, move, relabel, (re)schedule, deadlines, estimate, note.
 
         Only the arguments you pass are changed. Requires the full-access token.
         """
@@ -612,11 +673,21 @@ def create_server(
         current = m.docs.get(item_id)
         if current is None:
             raise LookupError(f"no item with id {item_id!r}")
-        changes: JsonObj = {}
-        if title is not None:
-            changes["title"] = title
-        if parent is not None:
-            changes["parentId"] = m.resolve_parent(parent)
+        changes: JsonObj = _compact(
+            {
+                "title": title,
+                "parentId": m.resolve_parent(parent) if parent is not None else None,
+                "day": _opt_day(do_date),
+                "dueDate": _opt_day(due_date),
+                "endDate": _opt_day(end_date),
+                "startDate": _opt_day(start_date),
+                "timeEstimate": _ms(estimate_minutes),
+                "note": note,
+                "plannedWeek": planned_week,
+                "plannedMonth": planned_month,
+                "reviewDate": review_date,
+            }
+        )
         if labels is not None or add_labels or remove_labels:
             raw_ids = current.get("labelIds")
             ids = [str(x) for x in raw_ids] if isinstance(raw_ids, list) else []
@@ -629,32 +700,18 @@ def create_server(
                 with contextlib.suppress(ValueError):
                     ids.remove(m.resolve_label(lb).id)
             changes["labelIds"] = ids
-        if day is not None:
-            changes["day"] = parse_day(day).isoformat()
-        if due_date is not None:
-            changes["dueDate"] = parse_day(due_date).isoformat()
-        if estimate_minutes is not None:
-            changes["timeEstimate"] = _ms(estimate_minutes)
-        if note is not None:
-            changes["note"] = note
         if append_note is not None:
             old = current.get("note")
             old_text = old.rstrip() if isinstance(old, str) and old.strip() else ""
             changes["note"] = (
-                f"{old_text}\n\n{append_note}".lstrip() if old_text else append_note
+                f"{old_text}\n\n{append_note}" if old_text else append_note
             )
-        if star is not None:
-            changes["isStarred"] = star or False
+        if importance is not None:
+            changes["isStarred"] = importance or False
         if frog is not None:
             changes["isFrogged"] = frog or False
         if backburner is not None:
             changes["backburner"] = backburner
-        if planned_week is not None:
-            changes["plannedWeek"] = planned_week
-        if planned_month is not None:
-            changes["plannedMonth"] = planned_month
-        if review_date is not None:
-            changes["reviewDate"] = review_date
         for field in clear or []:
             key, empty = _CLEARABLE.get(field, (None, None))
             if key is None:
@@ -665,10 +722,10 @@ def create_server(
         result = await api.update_doc(item_id, changes)
         mirror.apply(result)
         if result.get("db") == "Tasks":
-            return {"updated": list(changes)} | task_summary(
+            return {"updated": sorted(changes)} | task_summary(
                 m, Task.model_validate(result)
             )
-        return {"updated": list(changes), "id": item_id, "title": result.get("title")}
+        return {"updated": sorted(changes), "id": item_id, "title": result.get("title")}
 
     @mcp.tool()
     async def mark_done(item_id: str) -> JsonObj:
@@ -682,8 +739,10 @@ def create_server(
 
 # field name the model uses -> (Marvin key, value that means "unset")
 _CLEARABLE: dict[str, tuple[str, object]] = {
-    "day": ("day", INBOX),
+    "do_date": ("day", INBOX),
     "due_date": ("dueDate", None),
+    "end_date": ("endDate", None),
+    "start_date": ("startDate", None),
     "estimate": ("timeEstimate", None),
     "note": ("note", ""),
     "planned_week": ("plannedWeek", None),

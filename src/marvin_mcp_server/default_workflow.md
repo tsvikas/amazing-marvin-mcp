@@ -33,11 +33,11 @@ and ask me only when something is unclear:
 
 1. Rephrase the title as a clear, actionable next step (or turn it into a
    project with a first action).
-2. Set an energy label.
-3. Set a time estimate.
-4. Move it to a category / project.
-5. Add context labels (location, requirements, waiting-for).
-6. Schedule it (or leave unscheduled on purpose) and set a deadline if real.
+1. Set an energy label.
+1. Set a time estimate.
+1. Move it to a category / project.
+1. Add context labels (location, requirements, waiting-for).
+1. Schedule it (or leave unscheduled on purpose) and set a deadline if real.
 
 ## Daily check
 
@@ -52,6 +52,6 @@ When I ask "what's on today" / "what should I look at", include:
 
 <!-- How to answer "I have 5 minutes" / "I'm at my car" / "low energy". -->
 
-- "I have N minutes": filter by time estimate <= N (and/or label …)
+- "I have N minutes": filter by time estimate \<= N (and/or label …)
 - "I'm at …": filter by context label …
 - "Low energy": label …

@@ -66,7 +66,9 @@ def docs() -> list[JsonObj]:
                 },
             },
         ),
-        doc("ProfileItems", "strategySettings.timeEstimates", val=True),
+        doc("ProfileItems", "strategies.timeEstimates", val=True),
+        doc("ProfileItems", "strategies.labels", val=False),
+        doc("ProfileItems", "strategies.orbit", val=True),
         doc(
             "Tasks",
             "t-inbox1",
@@ -93,6 +95,10 @@ def docs() -> list[JsonObj]:
             isStarred=2,
             rank=2,
             note="See the bug report.\nSecond line.",
+            endDate="2026-08-25",
+            times=None,
+            dailySection=0,
+            plannedWeek="",
         ),
         doc(
             "Tasks",
@@ -133,7 +139,14 @@ def docs() -> list[JsonObj]:
             backburner=True,
             isFrogged=3,
         ),
-        doc("Tasks", "t-due", title="Taxes", parentId="home", dueDate="2026-08-30"),
+        doc(
+            "Tasks",
+            "t-due",
+            title="Taxes",
+            parentId="home",
+            dueDate="2026-08-30",
+            timeEstimate=0,
+        ),
     ]
 
 
