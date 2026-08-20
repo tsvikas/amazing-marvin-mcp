@@ -1,60 +1,138 @@
 """CLI for marvin_mcp_server.
 
-Currently, a placeholder until the real CLI will be added.
+``serve`` is what an MCP client launches; the other commands are for setup and
+troubleshooting from a terminal.
 """
 
+import asyncio
+import logging
 import sys
 import traceback
 from collections.abc import Sequence
-from typing import Annotated, NoReturn
+from typing import NoReturn
 
-import cyclopts.types
-from cyclopts import App, CycloptsError, Parameter
+from cyclopts import App, CycloptsError
+
+from .server import State, build_state, create_server
+from .settings import Settings
+from .workflow import init_workflow as _init_workflow
 
 app = App(name="marvin-mcp-server")
 app.register_install_completion_command()
 
 
 # --- Commands -------------------------------------------------------------------------
-# This is the part to replace. `@app.default()` runs when no subcommand is
-# given, so switch these to `@app.command()` once there is more than one, and
-# keep the exit codes each returns listed in its docstring.
-@app.default()
-def do_something(
-    target: cyclopts.types.File,
-    /,
-    *,
-    code: Annotated[str, Parameter(alias="-c")] = "CODE",
-) -> int:
-    """Do something.
-
-    Args:
-        target: Path to the target file
-        code: The code to use
+@app.command()
+def serve() -> int:
+    """Run the MCP server over stdio (what Claude Code / Claude Desktop launch).
 
     Returns:
         The process exit code.
 
     Exit Codes:
         0: Success.
-        2: Invalid usage.
-        64-78: Reserved, an internal failure.
-        129-159: Reserved, terminated by signal N, as 128 + N.
     """
-    print(target, code)
+    # stdout is the MCP channel; everything else must go to stderr.
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO)
+    create_server(Settings()).run("stdio")
+    return 0
+
+
+@app.command()
+def check() -> int:
+    """Check configuration, credentials and the mirror; print what's enabled.
+
+    Returns:
+        The process exit code.
+
+    Exit Codes:
+        0: Everything configured is working.
+        69: A configured credential failed.
+    """
+    settings = Settings()
+    wf_state = "found" if settings.workflow_file.is_file() else "missing"
+    print(f"workflow file: {settings.workflow_file} ({wf_state})")
+    print(f"cache dir:     {settings.cache_dir}")
+    print(f"api token:     {_status(settings.can_write, 'create/mark_done disabled')}")
+    print(f"full access:   {_status(settings.can_edit, 'update_task disabled')}")
+    print(f"sync creds:    {_status(settings.can_sync, 'no reads possible')}")
+    return asyncio.run(_check(build_state(settings)))
+
+
+def _status(ok: bool, consequence: str) -> str:  # noqa: FBT001
+    return "set" if ok else f"missing ({consequence})"
+
+
+async def _check(state: State) -> int:
+    ok = True
+    if state.settings.can_write:
+        try:
+            me = await state.api.me()
+            print(f"REST api:      OK ({me.get('email')})")
+        except Exception as exc:  # noqa: BLE001
+            print(f"REST api:      FAILED: {exc}")
+            ok = False
+    if state.settings.can_sync:
+        try:
+            changed = await state.mirror.refresh(force=True)
+            m = state.mirror
+            print(
+                f"mirror:        OK, {len(m.docs)} documents ({changed} changed), "
+                f"{len(m.tasks())} tasks, {len(m.categories())} projects/categories, "
+                f"{len(m.labels())} labels"
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"mirror:        FAILED: {exc}")
+            ok = False
+    await state.api.aclose()
+    if state.couch is not None:
+        await state.couch.aclose()
+    return 0 if ok else EX_UNAVAILABLE
+
+
+@app.command()
+def sync() -> int:
+    """Refresh the local mirror now.
+
+    Returns:
+        The process exit code.
+
+    Exit Codes:
+        0: Success.
+    """
+    state = build_state(Settings())
+
+    async def run() -> None:
+        changed = await state.mirror.refresh(force=True)
+        print(f"{changed} changed, {len(state.mirror.docs)} documents total")
+        if state.couch is not None:
+            await state.couch.aclose()
+
+    asyncio.run(run())
+    return 0
+
+
+@app.command(name="init-workflow")
+def init_workflow(*, force: bool = False) -> int:
+    """Create the workflow file from the template, then open it in your editor.
+
+    Args:
+        force: Overwrite an existing file.
+
+    Returns:
+        The process exit code.
+
+    Exit Codes:
+        0: Success.
+    """
+    path = Settings().workflow_file
+    created = _init_workflow(path, force=force)
+    print(f"{'created' if created else 'already exists (use --force)'}: {path}")
     return 0
 
 
 # --- Entry point ----------------------------------------------------------------------
-# Maps the commands above onto exit codes, and is what `[project.scripts]` and
-# `__main__` both call.
-
-# sysexits(3) would put usage errors at 64, but 2 is the far wider convention:
-# argparse, click, clap, grep, diff, curl and bash builtins all use it.
-# https://stackoverflow.com/questions/1101957/are-there-any-standard-exit-status-codes-in-linux
 EX_USAGE = 2
-# The rest are sysexits(3) codes. `os.EX_*` holds the same values but only
-# exists on Unix, so they are inlined to keep the CLI importable on Windows.
 EX_NOINPUT = 66
 EX_UNAVAILABLE = 69
 EX_SOFTWARE = 70
@@ -74,20 +152,10 @@ def main(tokens: Sequence[str] | None = None) -> None:
         tokens: The command line to parse. Defaults to `sys.argv[1:]`.
     """
     try:
-        # `tokens` is a parameter so that tests can pass a command line here.
-        # Under pytest, a bare `app()` warns, since it would parse pytest's own
-        # argv, and a test that does so passes while testing nothing.
+        # Cyclopts itself calls `sys.exit` with a command's int return value.
         app(tokens, exit_on_error=False)
     except CycloptsError:
-        # Cyclopts has already printed its own error panel. Cyclopts >=5 exits 2
-        # on parse errors itself, so once the dependency requires it, this clause
-        # and `exit_on_error=False` above can both go.
         sys.exit(EX_USAGE)
-    # Nothing reports the errors below, so without `_fail` the CLI would exit on
-    # a bare code and no output. Match on the exception rather than on
-    # `type(exc)`, so that subclasses such as ConnectionRefusedError still land
-    # on the right code. Specific OSError subclasses must precede any bare
-    # `except OSError`, which would otherwise swallow them.
     except FileNotFoundError as exc:
         _fail(exc, EX_NOINPUT)
     except PermissionError as exc:

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from marvin_mcp_server import __version__, cli
@@ -11,11 +13,27 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
     assert capsys.readouterr().out.strip() == __version__
 
 
-def test_app(capsys: pytest.CaptureFixture[str]) -> None:
+def test_help_lists_commands(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc_info:
-        app("path/to/file")
+        app("--help")
     assert exc_info.value.code == 0
-    assert "path/to/file" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    for command in ("serve", "check", "sync", "init-workflow"):
+        assert command in out
+
+
+def test_init_workflow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    target = tmp_path / "wf.md"
+    monkeypatch.setenv("MARVIN_WORKFLOW_FILE", str(target))
+    with pytest.raises(SystemExit) as exc_info:
+        app(["init-workflow"])
+    assert exc_info.value.code == 0
+    assert target.read_text().startswith("# How I use Amazing Marvin")
+    with pytest.raises(SystemExit):
+        app(["init-workflow"])
+    assert "already exists" in capsys.readouterr().out
 
 
 def test_main_usage_error() -> None:
@@ -25,8 +43,6 @@ def test_main_usage_error() -> None:
 
 
 def test_main_unhandled_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Accept the call that `main` makes, so that the RuntimeError below is what
-    # reaches it, rather than a TypeError over the signature.
     def explode(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError
 
