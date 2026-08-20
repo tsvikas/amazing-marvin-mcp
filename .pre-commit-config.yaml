@@ -1,15 +1,14 @@
 # exclude those files from pre-commit checks
-exclude: "\
-  ^.copier-answers.yml$|\
-  ^tests/test_\\w*/output/|\
-  ^$"
+exclude: "^$\
+  |^\\.copier-answers\\.yml$\
+  |^tests/test_\\w*/output/\
+  "
 
 # pre-commit.ci config
 ci:
   # TODO: enable pre-commit.ci repository access
-  autoupdate_commit_msg: "[pre-commit.ci] chore: update pre-commit hooks"
-  autofix_commit_msg: "[pre-commit.ci] style: pre-commit fixes"
-  skip: []
+  autoupdate_commit_msg: '[pre-commit.ci] 🔧 pre-commit autoupdate'
+  autofix_commit_msg: '[pre-commit.ci] 🎨 pre-commit fixes'
   autoupdate_schedule: quarterly
 
 repos:
@@ -21,18 +20,19 @@ repos:
       - id: uv-lock
   # uv.lock -> .pre-commit-config.yaml
   - repo: https://github.com/tsvikas/sync-with-uv
-    rev: v0.1.2
+    rev: <placeholder_until_update_deps>
     hooks:
       - id: sync-with-uv
   # .pre-commit-config.yaml -> .pre-commit-config.yaml
   - repo: https://github.com/pre-commit/sync-pre-commit-deps
-    rev: v0.0.3
+    rev: <placeholder_until_update_deps>
     hooks:
       - id: sync-pre-commit-deps
+        args: [--yaml-mapping, '2', --yaml-sequence, '4', --yaml-offset, '2']
 
   # General hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: <placeholder_until_update_deps>
     hooks:
       # Filesystem
       - id: check-illegal-windows-names
@@ -71,7 +71,7 @@ repos:
       - id: pretty-format-json
         exclude_types: [jupyter]
   - repo: https://github.com/pre-commit/pygrep-hooks
-    rev: v1.10.0
+    rev: <placeholder_until_update_deps>
     hooks:
       # Python files
       - id: python-check-blanket-noqa
@@ -87,16 +87,27 @@ repos:
       # UTF-8 encoding
       - id: text-unicode-replacement-char
 
+  # Security
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+
   # All files
   - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
-    rev: 3.2.1
+    rev: <placeholder_until_update_deps>
     hooks:
       - id: editorconfig-checker
         exclude_types: [jupyter]
+  - repo: https://github.com/google/keep-sorted
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: keep-sorted
 
   # Spell checking
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+    rev: <placeholder_until_update_deps>
     hooks:
       - id: codespell
   - repo: https://github.com/adhtruong/mirrors-typos
@@ -113,44 +124,44 @@ repos:
 
   # Markdown files
   - repo: https://github.com/hukkin/mdformat
-    rev: 0.7.22
+    rev: <placeholder_until_update_deps>
     hooks:
       - id: mdformat
+        exclude: ^docs/reference/
         additional_dependencies:
           - mdformat-gfm
-          - mdformat-frontmatter
           - mdformat-footnote
+          - mdformat-frontmatter
           - mdformat-gfm-alerts
 
   # reStructuredText files
   - repo: https://github.com/PyCQA/doc8
-    rev: v1.1.2
+    rev: <placeholder_until_update_deps>
     hooks:
       - id: doc8
 
   # Python files
-  - repo: https://github.com/adamchainz/blacken-docs
-    rev: 1.19.1
-    hooks:
-      - id: blacken-docs
-        additional_dependencies:
-          - black==25.1.0
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.8
     hooks:
-      - id: ruff
+      - id: ruff-check
         alias: ruff-isort
         name: ruff isort
         args: [--select, I001, --fix]
       - id: ruff-format
-      - id: ruff
-        alias: ruff-check
+        types_or: [python, pyi, jupyter, markdown]
+      - id: ruff-check
+        types_or: [python, pyi, jupyter, pyproject]
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.15.0
+    rev: <placeholder_until_update_deps>
     hooks:
       - id: mypy
         name: mypy (without imports)
-        args: [--config-file, "", --ignore-missing-imports, --disable-error-code=import-untyped]
+        args:
+          - --config-file
+          - ''
+          - --ignore-missing-imports
+          - --disable-error-code=import-untyped
 
   # Jupyter Notebook files
   - repo: local
@@ -163,7 +174,7 @@ repos:
 
   # pyproject.toml
   - repo: https://github.com/henryiii/validate-pyproject-schema-store
-    rev: 2025.04.28
+    rev: <placeholder_until_update_deps>
     hooks:
       - id: validate-pyproject
 
@@ -175,24 +186,32 @@ repos:
 
   # GitHub files
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.33.0
+    rev: <placeholder_until_update_deps>
     hooks:
       - id: check-dependabot
       - id: check-github-actions
       - id: check-github-workflows
       - id: check-readthedocs
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.7
+    rev: <placeholder_until_update_deps>
     hooks:
       - id: actionlint
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: zizmor
 
   # Shell scripts
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.10.0.1
+    rev: <placeholder_until_update_deps>
     hooks:
       - id: shellcheck
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: shfmt
   - repo: https://github.com/hugoh/pre-commit-fish
-    rev: v1.2
+    rev: <placeholder_until_update_deps>
     hooks:
       - id: fish_syntax
       - id: fish_indent

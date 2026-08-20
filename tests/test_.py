@@ -1,4 +1,4 @@
-import importlib
+import importlib.metadata
 
 import marvin_mcp_server
 

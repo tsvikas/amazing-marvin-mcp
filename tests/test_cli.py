@@ -1,0 +1,36 @@
+import pytest
+
+from marvin_mcp_server import __version__, cli
+from marvin_mcp_server.cli import EX_SOFTWARE, EX_USAGE, app, main
+
+
+def test_version(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        app("--version")
+    assert exc_info.value.code == 0
+    assert capsys.readouterr().out.strip() == __version__
+
+
+def test_app(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        app("path/to/file")
+    assert exc_info.value.code == 0
+    assert "path/to/file" in capsys.readouterr().out
+
+
+def test_main_usage_error() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--not-an-option"])
+    assert exc_info.value.code == EX_USAGE
+
+
+def test_main_unhandled_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Accept the call that `main` makes, so that the RuntimeError below is what
+    # reaches it, rather than a TypeError over the signature.
+    def explode(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError
+
+    monkeypatch.setattr(cli, "app", explode)
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == EX_SOFTWARE

@@ -10,7 +10,6 @@ description = "MCP server for amazing marvin."
 license = "MIT"
 license-files = ["LICEN[CS]E.*"]
 readme = "README.md"
-requires-python = ">=3.13"
 authors = [
   {name = "Tsvika Shapira", email = "tsvikas@gmail.com"}
 ]
@@ -29,63 +28,83 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Typing :: Typed",
 ]
+# urls.Homepage = "https://marvin-mcp-server.readthedocs.io"
+urls.Source = "https://github.com/tsvikas/marvin-mcp-server"
+urls.Changelog = "https://github.com/tsvikas/marvin-mcp-server/blob/main/CHANGELOG.md"
+# urls.ReleaseNotes = "https://github.com/tsvikas/marvin-mcp-server/releases"
+# urls.Documentation = "https://marvin-mcp-server.readthedocs.io"
+urls.Issues = "https://github.com/tsvikas/marvin-mcp-server/issues"
+# urls.Funding = "https://github.com/sponsors/tsvikas"
+# Discussions = "https://github.com/tsvikas/marvin-mcp-server/discussions"
+
+requires-python = ">=3.13"
 dependencies = [
+  "cyclopts >=4",
 ]
 
 [project.optional-dependencies]
 # optional_name = ["some_package >=1.0"]
 
-[project.urls]
-# homepage = "https://marvin-mcp-server.readthedocs.io"
-source = "https://github.com/tsvikas/marvin-mcp-server"
-# changelog = "https://github.com/tsvikas/marvin-mcp-server/blob/master/CHANGELOG.md"
-# releasenotes = "https://github.com/tsvikas/marvin-mcp-server/releases"
-# documentation = "https://marvin-mcp-server.readthedocs.io"
-# issues = "https://github.com/tsvikas/marvin-mcp-server/issues"
-# funding = "https://github.com/sponsors/tsvikas"
-
 [project.scripts]
-# marvin-mcp-server = "marvin_mcp_server.cli:app"
+marvin-mcp-server = "marvin_mcp_server.cli:main"
 
 [project.gui-scripts]
 # marvin-mcp-server = "marvin_mcp_server.gui:app.run"
-
-
-[tool.uv]
-required-version = "~=0.7.0"
-default-groups = ["dev", "test", "typing"]
 
 
 [dependency-groups]
 dev = [
   ## used in the justfile
   "rust-just ~=1.0",
-  "pre-commit ~=4.0",
-  "black ~=25.0",  # also update GHA version
-  "ruff ~=0.11.0",
+  "prek ~=0.4.0",
+  "ruff ~=0.16.0",
   ## can be used for debug
   "icecream >=2",
   ## can be used for REPL
   "ipython >=8",
 ]
 test = [
-  "pytest ~=8.0",
+  "pytest ~=9.0",
   ## running
   "pytest-reverse ~=1.0",
   "pytest-xdist[psutil] ~=3.0",
   ## reporting
   "pytest-clarity ~=1.0",
+  "pytest-github-actions-annotate-failures ~=0.4.0",
   ## extras
   "pytest-benchmark ~=5.0",
-  "pytest-cov ~=6.0",
+  "pytest-cov ~=7.0",
+  ## fixtures
+  # "freezegun ~=1.0",
+  # "hypothesis ~=6.0",
+  # "pytest-datadir ~=1.0",
+  "pytest-mock ~=3.3",
+  # "pytest-regressions ~=2.0",
 ]
-# docs = []
+docs = [
+  "mkdocs ~=1.0",
+  "mkdocs-material ~=9.0",
+  "mkdocstrings-python ~=1.0",
+  "mkdocs-gen-files ~=0.5.0",
+  "mkdocs-literate-nav ~=0.6.0",
+  "mkdocs-section-index ~=0.3.0",
+]
 typing = [
-  "mypy ~=1.15.0",
+  "mypy ~=2.3.0",
+  "ty ~=0.0",
   # add "*-stubs" and "types-*" packages here (">=0")
 ]
+
+
+[tool.uv]
+required-version = ">=0.10.12"
+default-groups = ["dev", "test", "typing"]
+# Minimum age guard: only consider package versions released at least 24h ago,
+# as a lightweight supply-chain defense against just-published malicious releases.
+exclude-newer = "24 hours"
 
 
 [tool.hatch]
@@ -93,30 +112,40 @@ version.source = "vcs"
 build.hooks.vcs.version-file = "src/marvin_mcp_server/_version.py"
 
 
-[tool.pytest.ini_options]
-minversion = "7.0"
+[tool.pytest]
+minversion = "9.0"
+testpaths = [
+  "src/",
+  "tests/",
+]
 addopts = [
-  ## testing
+  ## collection
   "--doctest-modules",
-  "--strict-markers",
-  "--strict-config",
   ## reporting
   "-ra",
-  ## addons
-  "--benchmark-disable",  # pytest-benchmark
-  "--cov=src/marvin_mcp_server",  # pytest-cov
-  "--reverse",  # pytest-reverse
-  # Uncomment to enable pytest-xdist for parallel execution,
-  # but note that it hides filenames in output.
+  ## addons: pytest-benchmark
+  "--benchmark-disable",
+  ## addons: pytest-cov
+  # this might affect debuggers.
+  # use `--no-cov` to disable in the debugger
+  # see https://pytest-cov.readthedocs.io/en/latest/debuggers.html
+  "--cov=src/marvin_mcp_server",
+  "--cov-branch",
+  ## addons: pytest-reverse
+  "--reverse",
+  ## addons: pytest-xdist
+  # this enable parallel execution, but hides filenames in output
   # "--numprocesses=auto",  # pytest-xdist
 ]
-xfail_strict = true
+## testing
+strict = true
+empty_parameter_set_mark = "xfail"  # The default value in future releases
 filterwarnings = [
   "error",
   "default::DeprecationWarning",
   "error::DeprecationWarning:marvin_mcp_server",
 ]
-log_cli_level = "INFO"
+log_level = "INFO"
 
 
 [tool.coverage]
@@ -126,19 +155,25 @@ run.omit = [
 ]
 
 
+[tool.ty]
+src.include = [
+    "src",
+    "tests",
+]
+
+
 [tool.mypy]
 files = ["src", "tests"]
 mypy_path = "stubs"
-# verify the config file
-warn_unused_configs = true
+fixed_format_cache = true
 # set the platform
 python_version = "3.13"
-# enable checks [last updated: mypy 1.15]
+# enable checks [last updated: mypy 2.3]
 strict = true
-disallow_any_explicit = true
+strict_equality_for_none = true
 disallow_any_unimported = true
 warn_unreachable = true
-#strict_bytes = true  # TODO: enable me when validate-pyproject updates
+disallow_any_explicit = true
 enable_error_code = [
   # from https://mypy.readthedocs.io/en/stable/error_code_list2.html
   "redundant-self",
@@ -152,7 +187,13 @@ enable_error_code = [
   "explicit-override",
   "mutable-override",
   "unimported-reveal",
-  "narrowed-type-not-subtype",
+  "exhaustive-match",
+]
+
+
+[tool.deptry.per_rule_ignores]
+# add dependencies that are not used in the codebase
+DEP002 = [
 ]
 
 
@@ -173,6 +214,8 @@ ignore = [
   # needed only in large codebases
   "TD002",    # flake8-todos/missing-todo-author
   "TD003",    # flake8-todos/missing-todo-link
+  # needed only with a per-file copyright policy
+  "CPY001",   # flake8-copyright/missing-copyright-notice
   # incompatible with other rules
   "COM812",   # flake8-commas/missing-trailing-comma (incompatible with black)
   # disagree:
@@ -184,10 +227,13 @@ ignore = [
   # ban something useful for a possibly good reason
   #"C901",     # mccabe/complex-structure
   #"S101",     # flake8-bandit/assert
-  #"PD901",    # pandas-vet/pandas-df-variable-name
   #"FIX00",    # flake8-fixme/line-contains-*
   #"ERA001",   # eradicate/commented-out-code
-  #"PLR091",   # PyLint-Refactor/too-many-*
+  #"PLR0911",  # PyLint-Refactor/too-many-return-statements
+  #"PLR0912",  # PyLint-Refactor/too-many-branches
+  #"PLR0913",  # PyLint-Refactor/too-many-arguments
+  #"PLR0915",  # PyLint-Refactor/too-many-statements
+  #"PLR0917",  # PyLint-Refactor/too-many-positional-arguments
   #"TRY003",   # tryceratops/raise-vanilla-args
 ]
 # objects that should be treated equivalently to a logging.Logger object.
@@ -208,15 +254,29 @@ flake8-comprehensions.allow-dict-calls-with-keyword-arguments = true
 "src/marvin_mcp_server/_version.py" = [
   "ALL",
 ]
+"scripts/**.py" = [
+  "T20",      # flake8-print
+  "INP001",   # implicit-namespace-package
+]
 "!tests/test_*.py" = [
   "PT",       # flake8-pytest-style
 ]
-"tests/test_*.py" = [
+"tests/**.py" = [
   "INP001",   # flake8-no-pep420/implicit-namespace-package
+]
+"tests/test_*.py" = [
   "PLR2004",  # PyLint-Refactor/magic-value-comparison
   "S101",     # flake8-bandit/assert
   "D1",       # pydocstyle/undocumented-*
+  "TC001",    # flake8-type-checking/typing-only-*-import
+  "TC002",    # flake8-type-checking/typing-only-*-import
+  "TC003",    # flake8-type-checking/typing-only-*-import
 ]
+
+
+[tool.typos.default.extend-identifiers]
+# a ruff rule code, not a misspelling of "copy"
+CPY001 = "CPY001"
 
 
 [tool.pylint]

@@ -1,6 +1,6 @@
 """marvin-mcp-server: MCP server for amazing marvin.
 
-Copyright (c) 2025 Tsvika Shapira. All rights reserved.
+© 2025 Tsvika Shapira. Some rights reserved.
 """
 
 from ._version import version as _version

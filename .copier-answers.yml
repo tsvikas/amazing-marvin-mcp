@@ -1,10 +1,14 @@
 # Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
-_commit: v0.14.1-25-gec0d803
+_commit: v0.30.0
 _src_path: gh:tsvikas/python-template
+audit_in_ci: false
+cli_framework: cyclopts
 format_tool: ruff
 get_package_version_from_vcs: true
 github_user: tsvikas
-has_cli: false
+in_codecov: true
+in_pypi: false
+in_rtd: false
 jupyter_files: forbid
 license: MIT
 package_description: MCP server for amazing marvin.
