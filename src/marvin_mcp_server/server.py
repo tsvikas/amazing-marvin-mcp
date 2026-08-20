@@ -21,7 +21,14 @@ from pydantic import Field, SecretStr
 from . import __version__
 from .api import MarvinAPI
 from .couch import CouchClient
-from .mirror import Mirror, TaskFilter
+from .mirror import (
+    LABEL_GROUPS_DOC,
+    LABELS_DOC,
+    LABELS_STRATEGY_DOC,
+    Mirror,
+    TaskFilter,
+    new_id,
+)
 from .models import INBOX, MS_PER_MINUTE, Category, JsonObj, Task
 from .settings import Settings
 from .workflow import load_workflow
@@ -232,6 +239,49 @@ def task_detail(mirror: Mirror, task: Task) -> JsonObj:
         )
     )
     return detail
+
+
+def project_detail(mirror: Mirror, cat: Category) -> JsonObj:
+    """Everything about a project or category, including its open children."""
+    labels = {lb.id: lb.title for lb in mirror.labels()}
+    kids = [c for c in mirror.categories() if c.parent_id == cat.id and not c.done]
+    tasks = mirror.search(TaskFilter(parent_id=cat.id, include_descendants=False))
+    extra = cat.model_extra or {}
+    return _compact(
+        {
+            "id": cat.id,
+            "title": cat.title,
+            "type": cat.type,
+            "parent": " > ".join(mirror.path(cat.parent_id)),
+            "parent_id": cat.parent_id,
+            "labels": [labels.get(i, i) for i in cat.label_ids],
+            "do_date": cat.day if cat.day != INBOX else None,
+            "due_date": cat.due_date,
+            "end_date": cat.end_date,
+            "start_date": cat.start_date,
+            "planned_week": cat.planned_week,
+            "planned_month": cat.planned_month,
+            "review_date": cat.review_date,
+            "priority": cat.priority,
+            "estimate_min": cat.estimate_minutes,
+            "frog": cat.frog_level,
+            "backburner": cat.backburner,
+            "done": cat.done,
+            "note": cat.note,
+            "subprojects": [
+                _compact({"id": c.id, "title": c.title, "type": c.type})
+                for c in sorted(kids, key=lambda c: c.rank)
+            ],
+            "open_tasks": [task_summary(mirror, t) for t in tasks],
+            "created_at": _iso(cat.created_at),
+            "updated_at": _iso(cat.updated_at),
+            "other_fields": {
+                k: v
+                for k, v in extra.items()
+                if k not in _NOISE and v not in (None, "", 0, False, [], {})
+            },
+        }
+    )
 
 
 def _iso(ms: float | None) -> str | None:
@@ -499,9 +549,14 @@ def create_server(
         return _summaries(m, m.search(flt), min(limit, MAX_RESULTS))
 
     @mcp.tool()
-    async def get_task(task_id: str) -> JsonObj:
-        """Full details of one task: note, subtasks, dates, tracking, and any unmodelled fields."""
+    async def get_task(
+        task_id: Annotated[str, Field(description="task or project id")],
+    ) -> JsonObj:
+        """Full details of one task (note, subtasks, dates, tracking) or project (its open children)."""
         m = await fresh()
+        doc = m.docs.get(task_id)
+        if doc is not None and doc.get("db") == "Categories":
+            return project_detail(m, m.category(task_id))
         return task_detail(m, m.task(task_id))
 
     @mcp.tool()
@@ -728,6 +783,164 @@ def create_server(
         return {"updated": sorted(changes), "id": item_id, "title": result.get("title")}
 
     @mcp.tool()
+    async def update_subtasks(
+        task_id: str,
+        add: Annotated[
+            list[str] | None, Field(description="new subtask titles, appended")
+        ] = None,
+        complete: Annotated[
+            list[str] | None, Field(description="subtask ids or titles to mark done")
+        ] = None,
+        reopen: Annotated[
+            list[str] | None, Field(description="subtask ids or titles to un-complete")
+        ] = None,
+        remove: Annotated[
+            list[str] | None, Field(description="subtask ids or titles to delete")
+        ] = None,
+        rename: Annotated[
+            dict[str, str] | None, Field(description="{id or title: new title}")
+        ] = None,
+    ) -> JsonObj:
+        """Add, complete, reopen, rename or remove subtasks of a task. Requires full access."""
+        m = await fresh()
+        task = m.task(task_id)
+        subs: dict[str, JsonObj] = {
+            sid: s.model_dump(by_alias=True, exclude_none=True)
+            for sid, s in task.subtasks.items()
+        }
+
+        def find(ref: str) -> str:
+            if ref in subs:
+                return ref
+            hits = [
+                sid
+                for sid, s in subs.items()
+                if str(s.get("title", "")).casefold() == ref.casefold()
+            ]
+            if len(hits) != 1:
+                raise LookupError(f"subtask {ref!r} not found or ambiguous")
+            return hits[0]
+
+        next_rank = (
+            max((float(str(s.get("rank", 0))) for s in subs.values()), default=-1) + 1
+        )
+        for title in add or []:
+            sid = new_id()
+            subs[sid] = {"_id": sid, "title": title, "done": False, "rank": next_rank}
+            next_rank += 1
+        for ref in complete or []:
+            subs[find(ref)]["done"] = True
+        for ref in reopen or []:
+            subs[find(ref)]["done"] = False
+        for ref, title in (rename or {}).items():
+            subs[find(ref)]["title"] = title
+        for ref in remove or []:
+            del subs[find(ref)]
+        if not any((add, complete, reopen, remove, rename)):
+            raise ValueError("nothing to change")
+        result = await api.update_doc(task_id, {"subtasks": subs})
+        mirror.apply(result)
+        return task_detail(m, Task.model_validate(result))
+
+    @mcp.tool()
+    async def create_category(
+        title: str,
+        parent: Annotated[
+            str, Field(description="parent category id or name; 'root' = top level")
+        ] = "root",
+        color: Annotated[str | None, Field(description="#RRGGBB")] = None,
+    ) -> JsonObj:
+        """Create a category (a folder in the Master List). Categories can only live under categories."""
+        m = await fresh()
+        parent_id = m.resolve_parent(parent)
+        if parent_id != "root" and m.category(parent_id).is_project:
+            raise ValueError("categories can't be created inside a project")
+        siblings = [c.rank for c in m.categories() if c.parent_id == parent_id]
+        now = _now_ms()
+        doc: JsonObj = _compact(
+            {
+                "_id": new_id(),
+                "db": "Categories",
+                "type": "category",
+                "title": title,
+                "parentId": parent_id,
+                "rank": (max(siblings) + 1) if siblings else 0,
+                "color": color,
+                "createdAt": now,
+                "updatedAt": now,
+            }
+        )
+        result = await api.create_doc(doc)
+        mirror.apply(doc | result)
+        return {
+            "created": doc["_id"],
+            "title": title,
+            "parent": " > ".join(m.path(parent_id)),
+        }
+
+    @mcp.tool()
+    async def create_label(
+        title: str,
+        group: Annotated[
+            str | None, Field(description="existing label group (name or id)")
+        ] = None,
+        new_group: Annotated[
+            str | None, Field(description="create this group and put the label in it")
+        ] = None,
+        new_group_exclusive: Annotated[
+            bool, Field(description="only one label of the new group per task")
+        ] = False,
+        color: Annotated[str | None, Field(description="#RRGGBB")] = None,
+    ) -> JsonObj:
+        """Create a label (optionally inside an existing or new label group).
+
+        Requires the Task Labels strategy to be enabled in Marvin.
+        """
+        m = await fresh()
+        strategy = m.docs.get(LABELS_STRATEGY_DOC)
+        if not (strategy and strategy.get("val")):
+            raise RuntimeError(
+                "The Task Labels strategy is off; enable it in Marvin (Strategies) first."
+            )
+        for existing in m.labels():
+            if existing.title.casefold() == title.casefold():
+                raise ValueError(
+                    f"label {existing.title!r} already exists ({existing.id})"
+                )
+        now = _now_ms()
+        group_id: str | None = None
+        if new_group is not None:
+            groups_doc = m.docs.get(LABEL_GROUPS_DOC)
+            raw_groups = groups_doc.get("val") if groups_doc else None
+            groups = dict(raw_groups) if isinstance(raw_groups, dict) else {}
+            group_id = new_id()
+            groups[group_id] = {
+                "_id": group_id,
+                "title": new_group,
+                "rank": len(groups) + 1,
+                "createdAt": now,
+                "isExclusive": new_group_exclusive,
+            }
+            mirror.apply(await _write_profile(api, m, LABEL_GROUPS_DOC, groups, now))
+        elif group is not None:
+            group_id = m.resolve_label_group(group).id
+        labels_doc = m.docs.get(LABELS_DOC)
+        raw_labels = labels_doc.get("val") if labels_doc else None
+        labels = list(raw_labels) if isinstance(raw_labels, list) else []
+        label: JsonObj = _compact(
+            {
+                "_id": new_id(),
+                "title": title,
+                "color": color,
+                "createdAt": now,
+                "groupId": group_id,
+            }
+        )
+        labels.append(label)
+        mirror.apply(await _write_profile(api, m, LABELS_DOC, labels, now))
+        return {"created": label["_id"], "title": title, "group": new_group or group}
+
+    @mcp.tool()
     async def mark_done(item_id: str) -> JsonObj:
         """Mark a task or project done (handles recurring/echo tasks and stops tracking)."""
         result = await api.mark_done(item_id, tz_offset_minutes())
@@ -749,6 +962,26 @@ _CLEARABLE: dict[str, tuple[str, object]] = {
     "planned_month": ("plannedMonth", None),
     "review_date": ("reviewDate", None),
 }
+
+
+def _now_ms() -> int:
+    return int(datetime.now().timestamp() * 1000)  # noqa: DTZ005
+
+
+async def _write_profile(
+    api: MarvinAPI, mirror: Mirror, doc_id: str, value: object, now: int
+) -> JsonObj:
+    """Set ``val`` of a ProfileItems doc, creating the doc if Marvin never wrote it."""
+    if doc_id in mirror.docs:
+        return await api.update_doc(doc_id, {"val": value})
+    doc: JsonObj = {
+        "_id": doc_id,
+        "db": "ProfileItems",
+        "val": value,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    return doc | await api.create_doc(doc)
 
 
 def _ms(minutes: float | None) -> int | None:

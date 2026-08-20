@@ -156,6 +156,11 @@ class MarvinAPI:
         )
         return _as_obj(response.json())
 
+    async def create_doc(self, doc: JsonObj) -> JsonObj:
+        """``POST /api/doc/create`` (full access); ``doc`` needs ``_id`` and ``db``."""
+        response = await self._request("POST", "doc/create", json=doc, full=True)
+        return _as_obj(response.json())
+
     async def track(self, task_id: str, *, start: bool) -> JsonObj:
         """``POST /api/track`` to start or stop time tracking."""
         action = "START" if start else "STOP"

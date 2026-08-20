@@ -60,9 +60,11 @@ the REST API, which handles Marvin's conflict-resolution bookkeeping
 | `list_today [day]`                      | Do date that day, do date earlier but not done, due by then                      |
 | `list_due [by]`                         | Open tasks with a due date by a date (`week`, `month`, `YYYY-MM-DD`)             |
 | `search_tasks …`                        | Any mix of text, parent, labels, do-date window, due/end by, estimate, flags     |
-| `get_task id`                           | Full detail incl. note, subtasks, dates, unmodelled fields                       |
+| `get_task id`                           | Full detail of a task (note, subtasks, dates) or a project (its open children)   |
 | `list_children parent`                  | Direct tasks and sub-projects of a project/category                              |
 | `create_task` / `create_project`        | Names for parent/labels are resolved for you                                     |
+| `create_category` / `create_label`      | New folder in the Master List; new label (in an existing or new group)           |
+| `update_subtasks id …`                  | Add, complete, reopen, rename, remove subtasks                                   |
 | `update_task id …`                      | Rename, move, relabel, do/due/end/start date, estimate, note, importance, clear… |
 | `mark_done id`                          | Complete a task/project                                                          |
 | `sync_marvin`                           | Force a mirror refresh                                                           |

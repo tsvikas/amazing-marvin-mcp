@@ -9,6 +9,8 @@ under Marvin's 1440 requests/day budget even in a long triage session.
 from __future__ import annotations
 
 import json
+import secrets
+import string
 import time
 from dataclasses import dataclass
 from datetime import date
@@ -23,6 +25,14 @@ if TYPE_CHECKING:
 
 LABELS_DOC = "strategySettings.labels"
 LABEL_GROUPS_DOC = "strategySettings.labelSettings.groups"
+LABELS_STRATEGY_DOC = "strategies.labels"
+_ID_ALPHABET = string.ascii_letters + string.digits
+
+
+def new_id() -> str:
+    """Return a 13-char random id, the form Marvin's client uses."""
+    return "".join(secrets.choice(_ID_ALPHABET) for _ in range(13))
+
 
 # profile `strategies.<key>` -> name shown in Marvin's Strategies screen
 STRATEGY_NAMES = {
@@ -305,6 +315,16 @@ class Mirror:
             matches = [c for c in self.categories() if lowered in c.title.casefold()]
         return _unique(matches, name_or_id, "project/category").id
 
+    def resolve_label_group(self, name_or_id: str) -> LabelGroup:
+        """Turn a label-group id or a unique title into a :class:`LabelGroup`."""
+        groups = self.label_groups()
+        for group in groups:
+            if group.id == name_or_id:
+                return group
+        lowered = name_or_id.strip().casefold()
+        matches = [g for g in groups if g.title.casefold() == lowered]
+        return _unique(matches, name_or_id, "label group")
+
     def resolve_label(self, name_or_id: str) -> Label:
         """Turn a label id or a unique title into a :class:`Label`."""
         labels = self.labels()
@@ -345,7 +365,9 @@ def _values(raw: object) -> list[object]:
     return []
 
 
-def _unique[T: (Category, Label)](matches: list[T], query: str, kind: str) -> T:
+def _unique[T: (Category, Label, LabelGroup)](
+    matches: list[T], query: str, kind: str
+) -> T:
     if not matches:
         raise NotFoundError(f"no {kind} matching {query!r}")
     if len(matches) > 1:

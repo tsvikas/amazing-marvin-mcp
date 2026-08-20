@@ -23,14 +23,15 @@ Json = dict[str, Any]
 class FakeMarvin:
     """Records REST calls and answers like Marvin would."""
 
-    def __init__(self) -> None:
+    def __init__(self, docs: dict[str, Json] | None = None) -> None:
         self.requests: list[tuple[str, Json]] = []
+        self.docs = docs or {}
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content) if request.content else {}
         self.requests.append((request.url.path, body))
         if request.url.path == "/api/doc/update":
-            doc = {
+            doc = self.docs.get(body["itemId"]) or {
                 "_id": body["itemId"],
                 "db": "Tasks",
                 "title": "T",
@@ -43,6 +44,8 @@ class FakeMarvin:
             return httpx.Response(
                 200, json={"_id": "created-id", "db": "Tasks", **body}
             )
+        if request.url.path == "/api/doc/create":
+            return httpx.Response(200, json={**body, "_rev": "1-new"})
         if request.url.path == "/api/markDone":
             return httpx.Response(
                 200, json={"_id": body["itemId"], "db": "Tasks", "title": "T"}
@@ -51,8 +54,8 @@ class FakeMarvin:
 
 
 @pytest.fixture
-def fake() -> FakeMarvin:
-    return FakeMarvin()
+def fake(mirror: Mirror) -> FakeMarvin:
+    return FakeMarvin(mirror.docs)
 
 
 @pytest.fixture
@@ -287,3 +290,102 @@ async def test_prompts_and_resources(server: MCPServer[None], tmp_path: Path) ->
     res = await server.read_resource("marvin://workflow")
     assert not isinstance(res, InputRequiredResult)
     assert "short-win" in str(next(iter(res)).content)
+
+
+@pytest.mark.anyio
+async def test_create_category(
+    server: MCPServer[None], fake: FakeMarvin, mirror: Mirror
+) -> None:
+    out = await call(server, "create_category", title="Admin", parent="Work")
+    path, body = fake.requests[0]
+    assert path == "/api/doc/create"
+    assert body["db"] == "Categories"
+    assert body["type"] == "category"
+    assert body["parentId"] == "work"
+    assert body["rank"] == 1  # after "Client A" (rank 0)
+    assert len(body["_id"]) == 13
+    assert out["parent"] == "Work"
+    assert mirror.resolve_parent("Admin") == body["_id"]
+    assert "inside a project" in await call_error(
+        server, "create_category", title="x", parent="Website"
+    )
+
+
+@pytest.mark.anyio
+async def test_create_label_needs_strategy(server: MCPServer[None]) -> None:
+    assert "Task Labels strategy is off" in await call_error(
+        server, "create_label", title="waiting"
+    )
+
+
+@pytest.mark.anyio
+async def test_create_label_in_existing_and_new_group(
+    server: MCPServer[None], fake: FakeMarvin, mirror: Mirror
+) -> None:
+    mirror.docs["strategies.labels"]["val"] = True
+    await call(
+        server, "create_label", title="waiting", group="Context", color="#123456"
+    )
+    path, body = fake.requests[0]
+    assert path == "/api/doc/update"
+    assert body["itemId"] == "strategySettings.labels"
+    new_list = next(s["val"] for s in body["setters"] if s["key"] == "val")
+    assert [lb["title"] for lb in new_list] == [
+        "car",
+        "high-energy",
+        "low-energy",
+        "short-win",
+        "waiting",
+    ]
+    assert new_list[-1]["groupId"] == "g-ctx"
+    assert new_list[-1]["color"] == "#123456"
+    assert mirror.resolve_label("waiting").group_id == "g-ctx"
+
+    out = await call(
+        server,
+        "create_label",
+        title="office",
+        new_group="Location",
+        new_group_exclusive=True,
+    )
+    _, groups_body = fake.requests[1]
+    assert groups_body["itemId"] == "strategySettings.labelSettings.groups"
+    groups = next(s["val"] for s in groups_body["setters"] if s["key"] == "val")
+    new_group = next(g for g in groups.values() if g["title"] == "Location")
+    assert new_group["isExclusive"] is True
+    assert new_group["rank"] == 3
+    assert out["group"] == "Location"
+    assert mirror.resolve_label("office").group_id == new_group["_id"]
+    assert "already exists" in await call_error(server, "create_label", title="Office")
+
+
+@pytest.mark.anyio
+async def test_get_task_on_project(server: MCPServer[None]) -> None:
+    out = await call(server, "get_task", task_id="website")
+    assert out["type"] == "project"
+    assert out["parent"] == "Work > Client A"
+    assert [t["title"] for t in out["open_tasks"]] == ["Deploy site", "Fix header CSS"]
+
+
+@pytest.mark.anyio
+async def test_update_subtasks(server: MCPServer[None], fake: FakeMarvin) -> None:
+    out = await call(
+        server,
+        "update_subtasks",
+        task_id="t-web2",
+        add=["verify"],
+        complete=["push"],
+        rename={"s1": "build it"},
+    )
+    _, body = fake.requests[0]
+    subs = next(s["val"] for s in body["setters"] if s["key"] == "subtasks")
+    by_title = {s["title"]: s for s in subs.values()}
+    assert by_title["push"]["done"] is True
+    assert by_title["verify"]["done"] is False
+    assert by_title["verify"]["rank"] == 3
+    assert "build it" in by_title
+    assert out["subtasks"] == "2/3"
+    await call(server, "update_subtasks", task_id="t-web2", remove=["verify"])
+    assert "not found" in await call_error(
+        server, "update_subtasks", task_id="t-web2", remove=["nope"]
+    )
