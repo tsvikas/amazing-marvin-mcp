@@ -11,11 +11,14 @@
 
 ## Overview
 
-An [MCP](https://modelcontextprotocol.io) server for
+An unofficial [MCP](https://modelcontextprotocol.io) server for
 [Amazing Marvin](https://amazingmarvin.com), so an assistant such as Claude can
 answer "what's in my inbox?", "what's due this week?", "I'm at the car, what can
 I do?", and act on it: rename, relabel, reschedule, move, split into projects,
 save research into a note.
+
+This project is not affiliated with, endorsed by, or supported by Amazing
+Marvin; it uses their [public API](https://github.com/amazingmarvin/MarvinAPI/wiki).
 
 ### How it works
 

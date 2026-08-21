@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 [project]
 dynamic = ["version"]
 name = "amazing-marvin-mcp"
-description = "MCP server for amazing marvin."
+description = "Unofficial MCP server for Amazing Marvin."
 license = "MIT"
 license-files = ["LICEN[CS]E.*"]
 readme = "README.md"

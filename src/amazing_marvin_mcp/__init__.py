@@ -1,4 +1,4 @@
-"""amazing-marvin-mcp: MCP server for amazing marvin.
+"""amazing-marvin-mcp: Unofficial MCP server for Amazing Marvin.
 
 © 2025 Tsvika Shapira. Some rights reserved.
 """
