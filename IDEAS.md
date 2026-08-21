@@ -65,19 +65,28 @@ Not used yet. Worth adding for:
   my inbox", "I'm at the car with 10 minutes", "rename X") asserting which
   tools were called with which arguments. Only way to test the instructions.
   Manual `just evals`, not CI (costs tokens).
+
 - **Snapshot tests** (syrupy) for tool output shapes, paired with the
   recorded cassette.
+
 - **Instructions size budget**: warn in `check` when the workflow text is
   large; switch to "index inline + read resource" automatically.
+
 - **Strategy-aware hints**: if Duration Estimates is off, don't suggest
   estimates; if Planning Ahead is off, don't offer planned weeks.
 
 ## Packaging
 
+- **httpx 1.0**: the CI prerelease job fails because `respx` still imports
+  `httpcore` (renamed `httpcore2` in httpx 1.0). Revisit when respx ships
+  support; until then that job is an allowed failure.
+
 - `uvx --from git+… amazing-marvin-mcp serve` one-liner; PyPI release once the
   tool set settles.
+
 - Claude Desktop / other clients: verify the `.env` lookup works when the
   client's working directory is `/`.
+
 - A `amazing-marvin-mcp doctor` that prints the tree and label summary, to
   check the mirror without an MCP client.
 

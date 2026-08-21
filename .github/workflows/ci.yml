@@ -264,3 +264,6 @@ jobs:
       - uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
         with:
           jobs: ${{ toJSON(needs) }}
+          # Prerelease resolutions are an early warning, not a gate: e.g. respx
+          # does not support the httpx 1.0 prereleases yet.
+          allowed-failures: test-pypy-and-prerelease

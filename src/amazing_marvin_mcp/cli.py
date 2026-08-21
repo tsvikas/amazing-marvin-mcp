@@ -9,6 +9,7 @@ import logging
 import sys
 import traceback
 from collections.abc import Sequence
+from pathlib import Path
 from typing import NoReturn
 
 from cyclopts import App, CycloptsError
@@ -129,7 +130,7 @@ def init_workflow(*, split: bool = False, force: bool = False) -> int:
         0: Success.
     """
     settings = Settings()
-    path = settings.workflow_file
+    path = Path(settings.workflow_file)  # a concrete Path also keeps pylint happy
     if split and path.suffix == ".md":
         path = path.with_name("workflow")
     written = Workflow(path).init(split=split, force=force)

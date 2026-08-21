@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import date
 from pathlib import Path
 
@@ -178,7 +179,8 @@ def test_save_and_load_roundtrip(mirror: Mirror, tmp_path: Path) -> None:
     mirror.last_seq = "42-abc"
     mirror.save()
     path = tmp_path / "mirror.json"
-    assert path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":  # Windows has no POSIX permission bits
+        assert path.stat().st_mode & 0o777 == 0o600
     fresh = Mirror(None, path)
     assert fresh.load()
     assert fresh.last_seq == "42-abc"
