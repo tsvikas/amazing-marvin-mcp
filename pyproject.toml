@@ -88,6 +88,7 @@ test = [
   # "pytest-datadir ~=1.0",
   "pytest-mock ~=3.3",
   # "pytest-regressions ~=2.0",
+  "pytest-recording>=0.13.4",
 ]
 docs = [
   "mkdocs ~=1.0",
@@ -198,7 +199,7 @@ enable_error_code = [
 
 [[tool.mypy.overrides]]
 # pydantic models synthesize `__init__(**data: Any)`
-module = ["marvin_mcp_server.models", "marvin_mcp_server.settings", "conftest", "test_server"]
+module = ["marvin_mcp_server.models", "marvin_mcp_server.settings", "conftest", "test_server", "test_live"]
 disallow_any_explicit = false
 
 

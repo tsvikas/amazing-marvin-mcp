@@ -161,6 +161,13 @@ class MarvinAPI:
         response = await self._request("POST", "doc/create", json=doc, full=True)
         return _as_obj(response.json())
 
+    async def delete_doc(self, doc_id: str) -> None:
+        """``POST /api/doc/delete`` (full access). Permanent: the trash is client-side.
+
+        Deliberately not exposed as an MCP tool; used for test cleanup.
+        """
+        await self._request("POST", "doc/delete", json={"itemId": doc_id}, full=True)
+
     async def track(self, task_id: str, *, start: bool) -> JsonObj:
         """``POST /api/track`` to start or stop time tracking."""
         action = "START" if start else "STOP"

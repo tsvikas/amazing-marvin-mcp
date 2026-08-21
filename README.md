@@ -73,29 +73,30 @@ the REST API, which handles Marvin's conflict-resolution bookkeeping
 There is deliberately no delete tool: Marvin's trash is client-side, so API
 deletes are unrecoverable.
 
-## Install
+## Install and set up (using it)
 
-```bash
-uv tool install git+https://github.com/tsvikas/marvin-mcp-server.git
-```
-
-## Setup
-
-1. **Credentials.** In Marvin, enable the *API* strategy (Strategies → API →
-   settings) and export its values:
+1. **Install** (needs [uv](https://docs.astral.sh/uv/)):
 
    ```bash
-   export MARVIN_API_TOKEN=...           # create / mark done
-   export MARVIN_FULL_ACCESS_TOKEN=...   # edit existing items (optional: omit for no edits)
-   export MARVIN_SYNC_SERVER=...         # CouchDB: the read mirror
-   export MARVIN_SYNC_DATABASE=...
-   export MARVIN_SYNC_USER=...
-   export MARVIN_SYNC_PASSWORD=...
+   uv tool install git+https://github.com/tsvikas/marvin-mcp-server.git
    ```
 
-   A `.env` file in the working directory works too. **While developing, use a
-   second, throwaway Marvin account** (14-day trial, no card): the full-access
-   token can damage data.
+1. **Credentials.** In Marvin, enable the *API* strategy (Strategies → API →
+   settings). Put its values in `~/.config/marvin-mcp-server/.env`
+   (Linux; `marvin-mcp-server check` prints the exact path on your OS):
+
+   ```bash
+   MARVIN_API_TOKEN=...           # create / mark done
+   MARVIN_FULL_ACCESS_TOKEN=...   # edit existing items; omit for no edits
+   MARVIN_SYNC_SERVER=...         # CouchDB: the read mirror
+   MARVIN_SYNC_DATABASE=...
+   MARVIN_SYNC_USER=...
+   MARVIN_SYNC_PASSWORD=...
+   ```
+
+   Environment variables and a `.env` in the working directory also work
+   (and override the per-user file). **While trying things out, use a
+   second, throwaway Marvin account**: the full-access token can damage data.
 
 1. **Check and first sync:**
 
@@ -109,16 +110,26 @@ uv tool install git+https://github.com/tsvikas/marvin-mcp-server.git
    marvin-mcp-server init-workflow   # writes a template; edit it
    ```
 
-1. **Register with Claude Code:**
+1. **Register with your MCP client.**
+
+   Claude Code:
 
    ```bash
    claude mcp add marvin -- marvin-mcp-server serve
    ```
 
-   For Claude Desktop, add the same command under `mcpServers` in its config.
-   The MCP client passes its environment through, so either export the
-   variables in the shell that launches it, or add them with
-   `claude mcp add -e MARVIN_API_TOKEN=... marvin ...`.
+   Claude Desktop (`claude_desktop_config.json`):
+
+   ```json
+   {
+     "mcpServers": {
+       "marvin": { "command": "marvin-mcp-server", "args": ["serve"] }
+     }
+   }
+   ```
+
+   Both read the per-user `.env`, so no secrets go in the client config.
+   Then ask: "what's in my Marvin inbox?"
 
 Other settings (shown by `check`): `MARVIN_WORKFLOW_FILE`, `MARVIN_CACHE_DIR`,
 `MARVIN_MIN_REQUEST_INTERVAL` (seconds between REST calls, default 3),
@@ -126,6 +137,35 @@ Other settings (shown by `check`): `MARVIN_WORKFLOW_FILE`, `MARVIN_CACHE_DIR`,
 
 The mirror file holds all your tasks; it is written with owner-only permissions
 under the cache directory.
+
+## Developing
+
+```bash
+git clone https://github.com/tsvikas/marvin-mcp-server && cd marvin-mcp-server
+uv sync && just prepare                     # deps + pre-commit hooks
+just test && just lint
+```
+
+Run the server from the checkout (a `.env` in the repo root is git-ignored and
+is picked up when the client starts from this directory; otherwise use
+`-e VAR=value` or the per-user file):
+
+```bash
+claude mcp add marvin-dev -- uv run --directory "$PWD" marvin-mcp-server serve
+```
+
+`tests/test_live.py` runs every tool end to end and replays a recorded
+cassette by default (`tests/cassettes/`), which doubles as a fixture of real
+Marvin documents. To re-record against a **throwaway** account (it creates
+and then deletes a few `[live]` items):
+
+```bash
+MARVIN_API_TOKEN=... MARVIN_FULL_ACCESS_TOKEN=... MARVIN_SYNC_SERVER=... \
+MARVIN_SYNC_DATABASE=... MARVIN_SYNC_USER=... MARVIN_SYNC_PASSWORD=... \
+uv run pytest tests/test_live.py --record-mode=rewrite
+```
+
+Design rules for contributions are in [CLAUDE.md](CLAUDE.md).
 
 ## Contributing
 

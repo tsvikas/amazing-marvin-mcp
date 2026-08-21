@@ -871,10 +871,10 @@ def create_server(
                 "updatedAt": now,
             }
         )
-        result = await api.create_doc(doc)
-        mirror.apply(doc | result)
+        stored = doc | await api.create_doc(doc)
+        mirror.apply(stored)
         return {
-            "created": doc["_id"],
+            "created": stored["_id"],
             "title": title,
             "parent": " > ".join(m.path(parent_id)),
         }
@@ -939,7 +939,8 @@ def create_server(
         )
         labels.append(label)
         mirror.apply(await _write_profile(api, m, LABELS_DOC, labels, now))
-        return {"created": label["_id"], "title": title, "group": new_group or group}
+        stored = m.resolve_label(title)  # id as Marvin stored it
+        return {"created": stored.id, "title": title, "group": new_group or group}
 
     @mcp.tool()
     async def mark_done(item_id: str) -> JsonObj:

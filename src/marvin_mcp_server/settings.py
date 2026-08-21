@@ -31,8 +31,12 @@ class Settings(BaseSettings):
     ``full_access_token`` for editing existing documents.
     """
 
+    # Later files win: a `.env` in the working directory overrides the per-user one.
     model_config = SettingsConfigDict(
-        env_prefix="MARVIN_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_prefix="MARVIN_",
+        env_file=(str(default_config_dir() / ".env"), ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     api_token: SecretStr | None = Field(default=None, description="apiToken")
