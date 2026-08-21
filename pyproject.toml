@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 
 [project]
 dynamic = ["version"]
-name = "marvin-mcp-server"
+name = "amazing-marvin-mcp"
 description = "MCP server for amazing marvin."
 license = "MIT"
 license-files = ["LICEN[CS]E.*"]
@@ -31,14 +31,14 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Typing :: Typed",
 ]
-# urls.Homepage = "https://marvin-mcp-server.readthedocs.io"
-urls.Source = "https://github.com/tsvikas/marvin-mcp-server"
-urls.Changelog = "https://github.com/tsvikas/marvin-mcp-server/blob/main/CHANGELOG.md"
-# urls.ReleaseNotes = "https://github.com/tsvikas/marvin-mcp-server/releases"
-# urls.Documentation = "https://marvin-mcp-server.readthedocs.io"
-urls.Issues = "https://github.com/tsvikas/marvin-mcp-server/issues"
+# urls.Homepage = "https://amazing-marvin-mcp.readthedocs.io"
+urls.Source = "https://github.com/tsvikas/amazing-marvin-mcp"
+urls.Changelog = "https://github.com/tsvikas/amazing-marvin-mcp/blob/main/CHANGELOG.md"
+# urls.ReleaseNotes = "https://github.com/tsvikas/amazing-marvin-mcp/releases"
+# urls.Documentation = "https://amazing-marvin-mcp.readthedocs.io"
+urls.Issues = "https://github.com/tsvikas/amazing-marvin-mcp/issues"
 # urls.Funding = "https://github.com/sponsors/tsvikas"
-# Discussions = "https://github.com/tsvikas/marvin-mcp-server/discussions"
+# Discussions = "https://github.com/tsvikas/amazing-marvin-mcp/discussions"
 
 requires-python = ">=3.13"
 dependencies = [
@@ -56,10 +56,10 @@ dependencies = [
 # optional_name = ["some_package >=1.0"]
 
 [project.scripts]
-marvin-mcp-server = "marvin_mcp_server.cli:main"
+amazing-marvin-mcp = "amazing_marvin_mcp.cli:main"
 
 [project.gui-scripts]
-# marvin-mcp-server = "marvin_mcp_server.gui:app.run"
+# amazing-marvin-mcp = "amazing_marvin_mcp.gui:app.run"
 
 
 [dependency-groups]
@@ -119,7 +119,7 @@ exclude-newer = "24 hours"
 
 [tool.hatch]
 version.source = "vcs"
-build.hooks.vcs.version-file = "src/marvin_mcp_server/_version.py"
+build.hooks.vcs.version-file = "src/amazing_marvin_mcp/_version.py"
 
 
 [tool.pytest]
@@ -139,7 +139,7 @@ addopts = [
   # this might affect debuggers.
   # use `--no-cov` to disable in the debugger
   # see https://pytest-cov.readthedocs.io/en/latest/debuggers.html
-  "--cov=src/marvin_mcp_server",
+  "--cov=src/amazing_marvin_mcp",
   "--cov-branch",
   ## addons: pytest-reverse
   "--reverse",
@@ -153,15 +153,15 @@ empty_parameter_set_mark = "xfail"  # The default value in future releases
 filterwarnings = [
   "error",
   "default::DeprecationWarning",
-  "error::DeprecationWarning:marvin_mcp_server",
+  "error::DeprecationWarning:amazing_marvin_mcp",
 ]
 log_level = "INFO"
 
 
 [tool.coverage]
 run.omit = [
-  "src/marvin_mcp_server/__main__.py",
-  "src/marvin_mcp_server/_version.py",
+  "src/amazing_marvin_mcp/__main__.py",
+  "src/amazing_marvin_mcp/_version.py",
 ]
 
 
@@ -203,7 +203,7 @@ enable_error_code = [
 
 [[tool.mypy.overrides]]
 # pydantic models synthesize `__init__(**data: Any)`
-module = ["marvin_mcp_server.models", "marvin_mcp_server.outputs", "marvin_mcp_server.settings", "conftest", "test_server", "test_live"]
+module = ["amazing_marvin_mcp.models", "amazing_marvin_mcp.outputs", "amazing_marvin_mcp.settings", "conftest", "test_server", "test_live"]
 disallow_any_explicit = false
 
 
@@ -267,10 +267,10 @@ flake8-type-checking.runtime-evaluated-base-classes = ["pydantic.BaseModel", "py
 "collections.namedtuple".msg = "Use typing.NamedTuple or @dataclasses.dataclass(frozen=True, slots=True)"
 
 [tool.ruff.lint.per-file-ignores]
-"src/marvin_mcp_server/cli.py" = [
+"src/amazing_marvin_mcp/cli.py" = [
   "T20",      # flake8-print
 ]
-"src/marvin_mcp_server/_version.py" = [
+"src/amazing_marvin_mcp/_version.py" = [
   "ALL",
 ]
 "scripts/**.py" = [
@@ -283,7 +283,7 @@ flake8-type-checking.runtime-evaluated-base-classes = ["pydantic.BaseModel", "py
 "tests/**.py" = [
   "INP001",   # flake8-no-pep420/implicit-namespace-package
 ]
-"src/marvin_mcp_server/server.py" = [
+"src/amazing_marvin_mcp/server.py" = [
   # MCP tool signatures *are* the schema the model sees: many keyword-style
   # arguments, booleans included, and long descriptions are the point.
   "PLR0913",  # too-many-arguments

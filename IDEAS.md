@@ -70,11 +70,11 @@ Not used yet. Worth adding for:
 
 ## Packaging
 
-- `uvx --from git+… marvin-mcp-server serve` one-liner; PyPI release once the
+- `uvx --from git+… amazing-marvin-mcp serve` one-liner; PyPI release once the
   tool set settles.
 - Claude Desktop / other clients: verify the `.env` lookup works when the
   client's working directory is `/`.
-- A `marvin-mcp-server doctor` that prints the tree and label summary, to
+- A `amazing-marvin-mcp doctor` that prints the tree and label summary, to
   check the mirror without an MCP client.
 
 ## Open questions
@@ -89,6 +89,7 @@ Not used yet. Worth adding for:
   `todayItems` honours rollover/auto-schedule settings that the mirror-based
   `list_today` reimplements)? Current answer: no, but compare results on a
   real account.
+
 - Is `isStarred` 1/2/3 ↔ P3/P2/P1 right in the current app, or did the
   Importance Levels rework change the encoding? Verify on a task starred in
   the UI.

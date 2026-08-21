@@ -1,4 +1,4 @@
-# marvin-mcp-server
+# amazing-marvin-mcp
 
 [![Tests][tests-badge]][tests-link]
 [![uv][uv-badge]][uv-link]
@@ -20,7 +20,7 @@ save research into a note.
 ### How it works
 
 ```
-Claude ──MCP (stdio)──▶ marvin-mcp-server
+Claude ──MCP (stdio)──▶ amazing-marvin-mcp
                           ├─ local mirror ◀── CouchDB `_changes` (your sync database)
                           │    reads, search and filters run here: no rate-limit cost
                           └─ writes ──▶ Marvin REST API (addTask, doc/update, markDone)
@@ -79,12 +79,12 @@ deletes are unrecoverable.
 1. **Install** (needs [uv](https://docs.astral.sh/uv/)):
 
    ```bash
-   uv tool install git+https://github.com/tsvikas/marvin-mcp-server.git
+   uv tool install git+https://github.com/tsvikas/amazing-marvin-mcp.git
    ```
 
 1. **Credentials.** In Marvin, enable the *API* strategy (Strategies → API →
-   settings). Put its values in `~/.config/marvin-mcp-server/.env`
-   (Linux; `marvin-mcp-server check` prints the exact path on your OS):
+   settings). Put its values in `~/.config/amazing-marvin-mcp/.env`
+   (Linux; `amazing-marvin-mcp check` prints the exact path on your OS):
 
    ```bash
    MARVIN_API_TOKEN=...           # create / mark done
@@ -102,14 +102,14 @@ deletes are unrecoverable.
 1. **Check and first sync:**
 
    ```bash
-   marvin-mcp-server check     # verifies tokens, pulls the database, prints counts
+   amazing-marvin-mcp check     # verifies tokens, pulls the database, prints counts
    ```
 
 1. **Describe your workflow:**
 
    ```bash
-   marvin-mcp-server init-workflow            # one workflow.md to edit, or
-   marvin-mcp-server init-workflow --split    # a workflow/ directory: planning, labels, triage, daily…
+   amazing-marvin-mcp init-workflow            # one workflow.md to edit, or
+   amazing-marvin-mcp init-workflow --split    # a workflow/ directory: planning, labels, triage, daily…
    ```
 
    Everything in it goes into the model's instructions (and each section is
@@ -121,7 +121,7 @@ deletes are unrecoverable.
    Claude Code:
 
    ```bash
-   claude mcp add marvin -- marvin-mcp-server serve
+   claude mcp add marvin -- amazing-marvin-mcp serve
    ```
 
    Claude Desktop (`claude_desktop_config.json`):
@@ -129,7 +129,7 @@ deletes are unrecoverable.
    ```json
    {
      "mcpServers": {
-       "marvin": { "command": "marvin-mcp-server", "args": ["serve"] }
+       "marvin": { "command": "amazing-marvin-mcp", "args": ["serve"] }
      }
    }
    ```
@@ -147,7 +147,7 @@ under the cache directory.
 ## Developing
 
 ```bash
-git clone https://github.com/tsvikas/marvin-mcp-server && cd marvin-mcp-server
+git clone https://github.com/tsvikas/amazing-marvin-mcp && cd amazing-marvin-mcp
 uv sync && just prepare                     # deps + pre-commit hooks
 just test && just lint
 ```
@@ -157,7 +157,7 @@ is picked up when the client starts from this directory; otherwise use
 `-e VAR=value` or the per-user file):
 
 ```bash
-claude mcp add marvin-dev -- uv run --directory "$PWD" marvin-mcp-server serve
+claude mcp add marvin-dev -- uv run --directory "$PWD" amazing-marvin-mcp serve
 ```
 
 `tests/test_live.py` runs every tool end to end and replays a recorded
@@ -178,17 +178,17 @@ Design rules for contributions are in [CLAUDE.md](CLAUDE.md).
 Interested in contributing?
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
-[codecov-badge]: https://codecov.io/gh/tsvikas/marvin-mcp-server/graph/badge.svg
-[codecov-link]: https://codecov.io/gh/tsvikas/marvin-mcp-server
+[codecov-badge]: https://codecov.io/gh/tsvikas/amazing-marvin-mcp/graph/badge.svg
+[codecov-link]: https://codecov.io/gh/tsvikas/amazing-marvin-mcp
 [github-discussions-badge]: https://img.shields.io/static/v1?label=Discussions&message=Ask&color=blue&logo=github
-[github-discussions-link]: https://github.com/tsvikas/marvin-mcp-server/discussions
+[github-discussions-link]: https://github.com/tsvikas/amazing-marvin-mcp/discussions
 [prs-welcome-badge]: https://img.shields.io/badge/PRs-welcome-brightgreen.svg
 [prs-welcome-link]: https://opensource.guide/how-to-contribute/
 [ruff-badge]: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json
 [ruff-link]: https://github.com/astral-sh/ruff
 [template-badge]: https://img.shields.io/badge/%F0%9F%9A%80_Made_Using-tsvikas%2Fpython--template-gold
 [template-link]: https://github.com/tsvikas/python-template
-[tests-badge]: https://github.com/tsvikas/marvin-mcp-server/actions/workflows/ci.yml/badge.svg
-[tests-link]: https://github.com/tsvikas/marvin-mcp-server/actions/workflows/ci.yml
+[tests-badge]: https://github.com/tsvikas/amazing-marvin-mcp/actions/workflows/ci.yml/badge.svg
+[tests-link]: https://github.com/tsvikas/amazing-marvin-mcp/actions/workflows/ci.yml
 [uv-badge]: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json
 [uv-link]: https://github.com/astral-sh/uv

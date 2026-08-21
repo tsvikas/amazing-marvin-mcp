@@ -88,7 +88,7 @@ pylint:
 # Run tests with pytest
 test:
   uv run --exact --all-extras --no-default-groups --group test \
-    --reinstall-package marvin_mcp_server -- pytest
+    --reinstall-package amazing_marvin_mcp -- pytest
   uv run --exact true
 
 # Run tests with pytest, using resolution lowest-direct
@@ -96,7 +96,7 @@ test-lowest python:
   mv uv.lock uv.lock.1
   uv sync --exact --all-extras --no-default-groups --group test \
     --upgrade --resolution lowest-direct --python {{python}} \
-    --reinstall-package marvin_mcp_server
+    --reinstall-package amazing_marvin_mcp
   mv uv.lock.1 uv.lock
   uv run --no-sync pytest
   uv run --exact true
@@ -159,4 +159,4 @@ serve-docs: build-docs-ref
 
 # Print the help of the CLI command
 print-cli-help:
-  uv run marvin-mcp-server --help
+  uv run amazing-marvin-mcp --help

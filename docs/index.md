@@ -1,3 +1,3 @@
-# marvin-mcp-server
+# amazing-marvin-mcp
 
 MCP server for amazing marvin.

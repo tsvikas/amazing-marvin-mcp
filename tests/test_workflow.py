@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from marvin_mcp_server.workflow import NO_WORKFLOW, Workflow, template_sections
+from amazing_marvin_mcp.workflow import NO_WORKFLOW, Workflow, template_sections
 
 
 def test_template_has_the_expected_sections() -> None:

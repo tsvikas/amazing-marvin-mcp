@@ -1,4 +1,4 @@
-# marvin-mcp-server — working rules
+# amazing-marvin-mcp — working rules
 
 MCP server for Amazing Marvin. Read `README.md` for what it does; this file is
 the design rules that keep additions coherent.
@@ -18,7 +18,7 @@ the design rules that keep additions coherent.
 - **No "smart"/opinionated tools** ("what should I focus on"). Tools expose
   Marvin's model; the user's conventions live in their workflow Markdown
   (`workflow.md` or a `workflow/` directory; templates in
-  `src/marvin_mcp_server/templates/workflow/`), injected into the server
+  `src/amazing_marvin_mcp/templates/workflow/`), injected into the server
   instructions and exposed as `marvin://workflow[/<section>]`.
 - **Use Marvin's UI vocabulary** in tool names, parameters, output fields and
   descriptions: Do date (`day`), Due date (`dueDate`, hard deadline), End date

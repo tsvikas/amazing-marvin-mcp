@@ -6,8 +6,8 @@ import pytest
 import respx
 from tenacity import retry, retry_if_exception, stop_after_attempt
 
-from marvin_mcp_server import api as api_module
-from marvin_mcp_server.api import (
+from amazing_marvin_mcp import api as api_module
+from amazing_marvin_mcp.api import (
     BASE_URL,
     MarvinAPI,
     MarvinAPIError,

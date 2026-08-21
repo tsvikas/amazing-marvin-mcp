@@ -1,4 +1,4 @@
-"""CLI for marvin_mcp_server.
+"""CLI for amazing_marvin_mcp.
 
 ``serve`` is what an MCP client launches; the other commands are for setup and
 troubleshooting from a terminal.
@@ -17,7 +17,7 @@ from .server import State, build_state, create_server
 from .settings import Settings
 from .workflow import Workflow
 
-app = App(name="marvin-mcp-server")
+app = App(name="amazing-marvin-mcp")
 app.register_install_completion_command()
 
 

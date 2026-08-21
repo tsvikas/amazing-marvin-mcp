@@ -1,4 +1,4 @@
-# Contributing to marvin-mcp-server
+# Contributing to amazing-marvin-mcp
 
 Thank you for your interest in contributing! There are many ways to help improve this project.
 
@@ -6,11 +6,11 @@ Thank you for your interest in contributing! There are many ways to help improve
 
 ### 🐛 Report Issues
 
-Found a bug or have a feature request? [Open an issue](https://github.com/tsvikas/marvin-mcp-server/issues/new) on GitHub.
+Found a bug or have a feature request? [Open an issue](https://github.com/tsvikas/amazing-marvin-mcp/issues/new) on GitHub.
 
 ### 💬 Join Discussions
 
-Have questions or ideas? Join the conversation in [GitHub Discussions](https://github.com/tsvikas/marvin-mcp-server/discussions).
+Have questions or ideas? Join the conversation in [GitHub Discussions](https://github.com/tsvikas/amazing-marvin-mcp/discussions).
 
 ### 🔧 Code Contributions
 
@@ -32,13 +32,13 @@ Ready to get started? Follow the development setup below.
 1. Clone this repository:
 
    ```bash
-   git clone https://github.com/tsvikas/marvin-mcp-server.git
+   git clone https://github.com/tsvikas/amazing-marvin-mcp.git
    ```
 
 1. Set up the development environment:
 
    ```bash
-   cd marvin-mcp-server
+   cd amazing-marvin-mcp
    uv run just prepare
    ```
 

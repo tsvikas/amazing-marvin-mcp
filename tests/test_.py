@@ -1,9 +1,10 @@
 import importlib.metadata
 
-import marvin_mcp_server
+import amazing_marvin_mcp
 
 
 def test_version() -> None:
     assert (
-        importlib.metadata.version("marvin_mcp_server") == marvin_mcp_server.__version__
+        importlib.metadata.version("amazing_marvin_mcp")
+        == amazing_marvin_mcp.__version__
     )

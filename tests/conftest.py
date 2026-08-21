@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from marvin_mcp_server.mirror import Mirror
-from marvin_mcp_server.models import JsonObj
+from amazing_marvin_mcp.mirror import Mirror
+from amazing_marvin_mcp.models import JsonObj
 
 MIN = 60_000
 

@@ -9,7 +9,7 @@ import platformdirs
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-APP_NAME = "marvin-mcp-server"
+APP_NAME = "amazing-marvin-mcp"
 
 
 def default_config_dir() -> Path:

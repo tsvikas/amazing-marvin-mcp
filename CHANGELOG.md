@@ -6,4 +6,4 @@ All notable changes to this project will be documented in this file.
 
 - Initial release
 
-[unreleased]: https://github.com/tsvikas/marvin-mcp-server/releases/tag/HEAD
+[unreleased]: https://github.com/tsvikas/amazing-marvin-mcp/releases/tag/HEAD

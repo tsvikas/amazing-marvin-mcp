@@ -12,8 +12,8 @@ in_rtd: false
 jupyter_files: forbid
 license: MIT
 package_description: MCP server for amazing marvin.
-package_name: marvin_mcp_server
-project_name: marvin-mcp-server
+package_name: amazing_marvin_mcp
+project_name: amazing-marvin-mcp
 python_min: 13
 user_email: tsvikas@gmail.com
 user_name: Tsvika Shapira

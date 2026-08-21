@@ -21,8 +21,8 @@ import pytest
 from mcp.types import CallToolResult
 from pydantic import SecretStr
 
-from marvin_mcp_server.server import build_state, create_server
-from marvin_mcp_server.settings import Settings
+from amazing_marvin_mcp.server import build_state, create_server
+from amazing_marvin_mcp.settings import Settings
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from mcp.server import MCPServer
 
-    from marvin_mcp_server.server import State
+    from amazing_marvin_mcp.server import State
 
 pytestmark = pytest.mark.vcr
 

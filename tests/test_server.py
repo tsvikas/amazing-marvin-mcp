@@ -14,10 +14,10 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, GetPromptResult, InputRequiredResult
 from pydantic import SecretStr
 
-from marvin_mcp_server.api import BASE_URL, MarvinAPI
-from marvin_mcp_server.mirror import Mirror
-from marvin_mcp_server.server import State, create_server, parse_day
-from marvin_mcp_server.settings import Settings
+from amazing_marvin_mcp.api import BASE_URL, MarvinAPI
+from amazing_marvin_mcp.mirror import Mirror
+from amazing_marvin_mcp.server import State, create_server, parse_day
+from amazing_marvin_mcp.settings import Settings
 
 Json = dict[str, Any]
 

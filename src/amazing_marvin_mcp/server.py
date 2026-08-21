@@ -405,7 +405,7 @@ def create_server(
         if not mirror.docs:
             raise RuntimeError(
                 "The mirror is empty. Configure MARVIN_SYNC_* credentials "
-                "(Marvin → Strategies → API → settings) and run `marvin-mcp-server sync`."
+                "(Marvin → Strategies → API → settings) and run `amazing-marvin-mcp sync`."
             )
         return mirror
 

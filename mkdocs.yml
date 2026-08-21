@@ -1,10 +1,10 @@
-site_name: marvin-mcp-server
-site_url: 'https://marvin-mcp-server.readthedocs.io/'
+site_name: amazing-marvin-mcp
+site_url: 'https://amazing-marvin-mcp.readthedocs.io/'
 site_author: Tsvika Shapira
 site_description: MCP server for amazing marvin.
 
-repo_name: 'tsvikas/marvin-mcp-server'
-repo_url: 'https://github.com/tsvikas/marvin-mcp-server'
+repo_name: 'tsvikas/amazing-marvin-mcp'
+repo_url: 'https://github.com/tsvikas/amazing-marvin-mcp'
 
 theme:
   name: material

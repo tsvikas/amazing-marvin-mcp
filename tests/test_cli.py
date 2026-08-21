@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from marvin_mcp_server import __version__, cli
-from marvin_mcp_server.cli import EX_SOFTWARE, EX_USAGE, app, main
+from amazing_marvin_mcp import __version__, cli
+from amazing_marvin_mcp.cli import EX_SOFTWARE, EX_USAGE, app, main
 
 
 def test_version(capsys: pytest.CaptureFixture[str]) -> None:

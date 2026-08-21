@@ -6,9 +6,9 @@ import httpx
 import pytest
 import respx
 
-from marvin_mcp_server.couch import CouchClient
-from marvin_mcp_server.mirror import AmbiguousError, Mirror, NotFoundError, TaskFilter
-from marvin_mcp_server.models import INBOX, Task
+from amazing_marvin_mcp.couch import CouchClient
+from amazing_marvin_mcp.mirror import AmbiguousError, Mirror, NotFoundError, TaskFilter
+from amazing_marvin_mcp.models import INBOX, Task
 
 
 def titles(tasks: list[Task]) -> set[str]:

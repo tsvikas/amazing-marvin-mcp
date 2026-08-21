@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 _TEMPLATES = resources.files(__package__) / "templates" / "workflow"
 
 NO_WORKFLOW = """\
-No workflow file found. Run `marvin-mcp-server init-workflow` to create one; until
+No workflow file found. Run `amazing-marvin-mcp init-workflow` to create one; until
 then, ask the user how they use labels, scheduling and deadlines before making
 assumptions.
 """
