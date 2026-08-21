@@ -15,7 +15,7 @@ from cyclopts import App, CycloptsError
 
 from .server import State, build_state, create_server
 from .settings import Settings
-from .workflow import init_workflow as _init_workflow
+from .workflow import Workflow
 
 app = App(name="marvin-mcp-server")
 app.register_install_completion_command()
@@ -50,8 +50,9 @@ def check() -> int:
         69: A configured credential failed.
     """
     settings = Settings()
-    wf_state = "found" if settings.workflow_file.is_file() else "missing"
-    print(f"workflow file: {settings.workflow_file} ({wf_state})")
+    sections = Workflow(settings.workflow_file).sections()
+    wf_state = f"{len(sections)} section(s)" if sections else "missing"
+    print(f"workflow:      {settings.workflow_file} ({wf_state})")
     print(f"cache dir:     {settings.cache_dir}")
     print(f"api token:     {_status(settings.can_write, 'create/mark_done disabled')}")
     print(f"full access:   {_status(settings.can_edit, 'update_task disabled')}")
@@ -113,11 +114,13 @@ def sync() -> int:
 
 
 @app.command(name="init-workflow")
-def init_workflow(*, force: bool = False) -> int:
-    """Create the workflow file from the template, then open it in your editor.
+def init_workflow(*, split: bool = False, force: bool = False) -> int:
+    """Create the workflow template for you to edit.
 
     Args:
-        force: Overwrite an existing file.
+        split: Write a `workflow/` directory with one file per section
+            (planning, labels, triage, ...) instead of a single `workflow.md`.
+        force: Overwrite existing files.
 
     Returns:
         The process exit code.
@@ -125,9 +128,16 @@ def init_workflow(*, force: bool = False) -> int:
     Exit Codes:
         0: Success.
     """
-    path = Settings().workflow_file
-    created = _init_workflow(path, force=force)
-    print(f"{'created' if created else 'already exists (use --force)'}: {path}")
+    settings = Settings()
+    path = settings.workflow_file
+    if split and path.suffix == ".md":
+        path = path.with_name("workflow")
+    written = Workflow(path).init(split=split, force=force)
+    if written:
+        for file in written:
+            print(f"created: {file}")
+    else:
+        print(f"already exists (use --force): {path}")
     return 0
 
 

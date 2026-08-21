@@ -1,16 +1,23 @@
 """Client for Marvin's REST API (https://github.com/amazingmarvin/MarvinAPI/wiki/Marvin-API).
 
 Only used for *writes*; reads come from the local mirror. Every call is
-throttled to Marvin's requested rate (1 request / 3 s by default).
+throttled to Marvin's requested rate (1 request / 3 s by default) and retried
+with backoff on transient failures (network errors, 429, 5xx).
 """
 
 from __future__ import annotations
 
-import asyncio
 import time
 from typing import TYPE_CHECKING
 
 import httpx
+from aiolimiter import AsyncLimiter
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 if TYPE_CHECKING:
     from .models import JsonObj
@@ -31,6 +38,26 @@ class MissingTokenError(RuntimeError):
     """The operation needs a token that was not configured."""
 
 
+_TRANSIENT_STATUSES = frozenset({429, 500, 502, 503, 504})
+
+
+def is_transient(exc: BaseException) -> bool:
+    """Whether a failure is worth retrying."""
+    if isinstance(exc, httpx.TransportError):
+        return True
+    status = getattr(exc, "status", None)  # MarvinAPIError, CouchError
+    return isinstance(status, int) and status in _TRANSIENT_STATUSES
+
+
+# Shared by the REST and CouchDB clients: 4 attempts, ~2 s -> ~20 s jittered waits.
+transient_retry = retry(
+    retry=retry_if_exception(is_transient),
+    wait=wait_exponential_jitter(initial=2, max=20),
+    stop=stop_after_attempt(4),
+    reraise=True,
+)
+
+
 class MarvinAPI:
     """Throttled async REST client."""
 
@@ -49,8 +76,12 @@ class MarvinAPI:
         self._min_interval = min_interval
         self._client = client or httpx.AsyncClient(timeout=60)
         self._base_url = base_url
-        self._lock = asyncio.Lock()
-        self._last_request = 0.0
+        # One request per `min_interval` seconds, no bursts.
+        self._limiter = (
+            AsyncLimiter(max_rate=1, time_period=min_interval)
+            if min_interval > 0
+            else None
+        )
 
     async def aclose(self) -> None:
         """Close the underlying HTTP client."""
@@ -79,23 +110,23 @@ class MarvinAPI:
         headers: dict[str, str] | None = None,
     ) -> httpx.Response:
         all_headers = self._headers(full=full) | (headers or {})
-        async with self._lock:
-            wait = self._last_request + self._min_interval - time.monotonic()
-            if wait > 0:
-                await asyncio.sleep(wait)
-            try:
-                response = await self._client.request(
-                    method,
-                    f"{self._base_url}/{path}",
-                    json=json,
-                    params=params,
-                    headers=all_headers,
-                )
-            finally:
-                self._last_request = time.monotonic()
-        if response.is_error:
-            raise MarvinAPIError(response.status_code, path, response.text)
-        return response
+
+        @transient_retry
+        async def send() -> httpx.Response:
+            if self._limiter is not None:
+                await self._limiter.acquire()
+            response = await self._client.request(
+                method,
+                f"{self._base_url}/{path}",
+                json=json,
+                params=params,
+                headers=all_headers,
+            )
+            if response.is_error:
+                raise MarvinAPIError(response.status_code, path, response.text)
+            return response
+
+        return await send()
 
     # --- endpoints ----------------------------------------------------------------
     async def test(self) -> str:

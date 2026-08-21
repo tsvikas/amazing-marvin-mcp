@@ -2,6 +2,7 @@
 exclude: "^$\
   |^\\.copier-answers\\.yml$\
   |^tests/test_\\w*/output/\
+  |^tests/cassettes/\
   "
 
 # pre-commit.ci config

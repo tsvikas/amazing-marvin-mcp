@@ -4,6 +4,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+import respx
 
 from marvin_mcp_server.couch import CouchClient
 from marvin_mcp_server.mirror import AmbiguousError, Mirror, NotFoundError, TaskFilter
@@ -184,17 +185,8 @@ def test_save_and_load_roundtrip(mirror: Mirror, tmp_path: Path) -> None:
     assert len(fresh.docs) == len(mirror.docs)
 
 
-def _couch(handler: httpx.MockTransport) -> CouchClient:
-    return CouchClient(
-        "db.example.com",
-        "u123",
-        "user",
-        "pw",
-        client=httpx.AsyncClient(transport=handler),
-    )
-
-
 @pytest.mark.anyio
+@respx.mock
 async def test_refresh_applies_changes_and_deletes(tmp_path: Path) -> None:
     seen: list[dict[str, str]] = []
 
@@ -237,9 +229,9 @@ async def test_refresh_applies_changes_and_deletes(tmp_path: Path) -> None:
             },
         )
 
-    mirror = Mirror(
-        _couch(httpx.MockTransport(handler)), tmp_path / "m.json", max_age=3600
-    )
+    respx.get("https://db.example.com/u123/_changes").mock(side_effect=handler)
+    couch = CouchClient("db.example.com", "u123", "user", "pw")
+    mirror = Mirror(couch, tmp_path / "m.json", max_age=3600)
     assert await mirror.refresh() == 2
     assert {t.title for t in mirror.tasks()} == {"A", "B"}
     # Fresh enough: no request.

@@ -16,8 +16,10 @@ the design rules that keep additions coherent.
 - **No `doc/delete` tool.** Marvin's trash is client-side; API deletes are
   unrecoverable. `MarvinAPI.delete_doc` exists for test cleanup only.
 - **No "smart"/opinionated tools** ("what should I focus on"). Tools expose
-  Marvin's model; the user's conventions live in their `workflow.md`, which is
-  injected into the server instructions and exposed as `marvin://workflow`.
+  Marvin's model; the user's conventions live in their workflow Markdown
+  (`workflow.md` or a `workflow/` directory; templates in
+  `src/marvin_mcp_server/templates/workflow/`), injected into the server
+  instructions and exposed as `marvin://workflow[/<section>]`.
 - **Use Marvin's UI vocabulary** in tool names, parameters, output fields and
   descriptions: Do date (`day`), Due date (`dueDate`, hard deadline), End date
   (`endDate`, self-imposed), Start date, Planned week/month, Duration estimate,
@@ -34,21 +36,26 @@ the design rules that keep additions coherent.
 ## Adding a write field or a new document shape
 
 1. Check the wiki (`Marvin-Data-Types`) for the field; prefer documented shapes.
-2. Add it to `update_task`/`create_*` with the UI name; add a unit test in
+1. Add it to `update_task`/`create_*` with the UI name; add a unit test in
    `tests/test_server.py` asserting the exact setters sent.
-3. Run it live against the **throwaway** account and, if it's a new document
+1. Run it live against the **throwaway** account and, if it's a new document
    shape (like labels were), compare with what the web app writes for the
    same thing. A wrong-shaped profile document can stop Marvin from starting.
-4. Re-record the live cassette: `uv run pytest tests/test_live.py
-   --record-mode=rewrite` with `MARVIN_*` in the environment.
+1. Re-record the live cassette: `uv run pytest tests/test_live.py --record-mode=rewrite` with `MARVIN_*` in the environment.
 
 ## Tooling
 
 - `just format`, `just lint`, `just test` (ruff, mypy strict, ty, pytest,
   deptry, prek hooks). All must pass before a commit.
+
 - Lower-bound version pins only (`>=`), no upper bounds.
-- Prefer established packages over hand-rolled helpers (pytest-recording for
-  HTTP replay, pydantic for shapes, httpx MockTransport only for tiny unit
-  tests).
+
+- Prefer established packages over hand-rolled helpers: pydantic models in
+  `outputs.py` for every tool result (compaction lives in their serializers),
+  aiolimiter/tenacity for rate limiting and retries, respx for HTTP mocks,
+  pytest-recording for the live cassette.
+
 - Credentials never go in the repo: `.env` files are git-ignored and tooling is
   blocked from writing them; document variables in the README instead.
+
+- Future work and open questions go in `IDEAS.md`, not in code comments.

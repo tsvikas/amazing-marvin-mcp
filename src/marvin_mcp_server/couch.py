@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from .api import transient_retry
+
 if TYPE_CHECKING:
     from .models import JsonObj
 
@@ -27,6 +29,11 @@ class Changes:
 
 class CouchError(RuntimeError):
     """Non-2xx response from the database."""
+
+    def __init__(self, status: int, body: str) -> None:
+        """Keep ``status`` so transient failures (429/5xx) can be retried."""
+        super().__init__(f"{status} from _changes: {body[:500]}")
+        self.status = status
 
 
 class CouchClient:
@@ -52,6 +59,7 @@ class CouchClient:
         """Close the underlying HTTP client."""
         await self._client.aclose()
 
+    @transient_retry
     async def changes(self, since: str | int = 0) -> Changes:
         """Fetch documents changed since ``since`` (``0`` for everything)."""
         response = await self._client.get(
@@ -60,7 +68,7 @@ class CouchClient:
             auth=self._auth,
         )
         if response.is_error:
-            raise CouchError(f"{response.status_code} from _changes: {response.text}")
+            raise CouchError(response.status_code, response.text)
         payload = response.json()
         result = Changes(last_seq=str(payload["last_seq"]))
         for row in payload["results"]:

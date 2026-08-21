@@ -42,12 +42,14 @@ urls.Issues = "https://github.com/tsvikas/marvin-mcp-server/issues"
 
 requires-python = ">=3.13"
 dependencies = [
+  "aiolimiter>=1.2.1",
   "cyclopts >=4",
   "httpx>=0.27",
   "mcp>=2",
   "platformdirs>=4",
   "pydantic>=2.10",
   "pydantic-settings>=2.6",
+  "tenacity>=9.1.4",
 ]
 
 [project.optional-dependencies]
@@ -89,6 +91,8 @@ test = [
   "pytest-mock ~=3.3",
   # "pytest-regressions ~=2.0",
   "pytest-recording>=0.13.4",
+  "respx>=0.23.1",
+  "syrupy>=5.5.3",
 ]
 docs = [
   "mkdocs ~=1.0",
@@ -199,7 +203,7 @@ enable_error_code = [
 
 [[tool.mypy.overrides]]
 # pydantic models synthesize `__init__(**data: Any)`
-module = ["marvin_mcp_server.models", "marvin_mcp_server.settings", "conftest", "test_server", "test_live"]
+module = ["marvin_mcp_server.models", "marvin_mcp_server.outputs", "marvin_mcp_server.settings", "conftest", "test_server", "test_live"]
 disallow_any_explicit = false
 
 
@@ -255,6 +259,8 @@ logger-objects = ["loguru.logger"]
 flake8-annotations.mypy-init-return = true
 # allow `dict(a=1, b=2)`
 flake8-comprehensions.allow-dict-calls-with-keyword-arguments = true
+# pydantic evaluates annotations at runtime; keep those imports out of TYPE_CHECKING
+flake8-type-checking.runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseSettings"]
 
 # flag modules or module members that may not be imported or accessed
 [tool.ruff.lint.flake8-tidy-imports.banned-api]

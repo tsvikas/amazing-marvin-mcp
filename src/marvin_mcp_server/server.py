@@ -4,7 +4,7 @@ Tools are shaped around what a person asks ("what's in my inbox", "what's due
 this week", "rename X") rather than around Marvin's endpoints, and use the
 names Marvin's UI uses (Do date, Due date, End date, Importance, Duration
 estimate, Backburner...). Anything opinionated about *how* to triage or plan is
-left to the user's workflow file.
+left to the user's workflow files.
 """
 
 from __future__ import annotations
@@ -30,8 +30,27 @@ from .mirror import (
     new_id,
 )
 from .models import INBOX, MS_PER_MINUTE, Category, JsonObj, Task
+from .outputs import (
+    Children,
+    Created,
+    DayView,
+    Done,
+    DueList,
+    ItemDetail,
+    ItemRef,
+    ItemSummary,
+    LabelGroupOut,
+    LabelOut,
+    MirrorInfo,
+    Structure,
+    SubtaskOut,
+    SyncResult,
+    TaskList,
+    TreeNode,
+    Updated,
+)
 from .settings import Settings
-from .workflow import load_workflow
+from .workflow import Workflow
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -74,13 +93,6 @@ so you see the current state. Never guess ids: resolve names via
 `get_structure` or a search first.
 """
 
-NO_WORKFLOW = """\
-## This user's workflow
-No workflow file found. Run `marvin-mcp-server init-workflow` to create one; until
-then, ask the user how they use labels, scheduling and deadlines before making
-assumptions.
-"""
-
 
 @dataclass(slots=True)
 class State:
@@ -119,13 +131,9 @@ def _secret(value: SecretStr | None) -> str | None:
     return None if value is None else value.get_secret_value()
 
 
-def instructions_for(settings: Settings) -> str:
+def instructions_for(workflow: Workflow) -> str:
     """Server instructions: generic Marvin semantics + the user's own workflow."""
-    workflow = load_workflow(settings.workflow_file)
-    user_part = (
-        NO_WORKFLOW if workflow is None else f"## This user's workflow\n{workflow}"
-    )
-    return f"{GENERIC_INSTRUCTIONS}\n{user_part}"
+    return f"{GENERIC_INSTRUCTIONS}\n## This user's workflow\n{workflow.text()}"
 
 
 # --- date helpers ---------------------------------------------------------------------
@@ -166,191 +174,201 @@ def _opt_day(value: str | None) -> str | None:
     return None if value is None else parse_day(value).isoformat()
 
 
-# --- rendering ------------------------------------------------------------------------
-def _compact(obj: JsonObj) -> JsonObj:
-    return {k: v for k, v in obj.items() if v not in (None, False, [], "", {}, 0)}
-
-
-def task_summary(mirror: Mirror, task: Task) -> JsonObj:
-    """One-line-ish view of a task, with ids resolved to names."""
-    labels = {lb.id: lb.title for lb in mirror.labels()}
-    note = (task.note or "").strip()
-    subtasks = list(task.subtasks.values())
-    return _compact(
-        {
-            "id": task.id,
-            "title": task.title,
-            "parent": " > ".join(mirror.path(task.parent_id)),
-            "labels": [labels.get(i, i) for i in task.label_ids],
-            "do_date": task.day if task.day != INBOX else None,
-            "due_date": task.due_date,
-            "end_date": task.end_date,
-            "start_date": task.start_date,
-            "planned_week": task.planned_week,
-            "planned_month": task.planned_month,
-            "estimate_min": task.estimate_minutes,
-            "importance": task.star_level,
-            "frog": task.frog_level,
-            "backburner": task.backburner,
-            "done": task.done,
-            "recurring": task.recurring,
-            "tracking": task.is_tracking,
-            "subtasks": f"{sum(s.done for s in subtasks)}/{len(subtasks)}"
-            if subtasks
-            else None,
-            "note_preview": note[:NOTE_PREVIEW]
-            + ("…" if len(note) > NOTE_PREVIEW else ""),
-        }
-    )
-
-
-def task_detail(mirror: Mirror, task: Task) -> JsonObj:
-    """Everything about a task, including raw fields we don't model."""
-    detail = task_summary(mirror, task)
-    detail.pop("note_preview", None)
-    extra = task.model_extra or {}
-    detail.update(
-        _compact(
-            {
-                "parent_id": task.parent_id,
-                "note": task.note,
-                "review_date": task.review_date,
-                "daily_section": task.daily_section,
-                "first_scheduled": task.first_scheduled,
-                "subtask_list": [
-                    {"id": s.id, "title": s.title, "done": s.done}
-                    for s in sorted(task.subtasks.values(), key=lambda s: s.rank)
-                ],
-                "depends_on": [
-                    mirror.docs.get(i, {}).get("title", i) for i in task.depends_on
-                ],
-                "minutes_tracked": task.duration / MS_PER_MINUTE
-                if task.duration
-                else None,
-                "created_at": _iso(task.created_at),
-                "updated_at": _iso(task.updated_at),
-                "done_at": _iso(task.done_at),
-                "other_fields": {
-                    k: v
-                    for k, v in extra.items()
-                    if k not in _NOISE and v not in (None, "", 0, False, [], {})
-                },
-            }
-        )
-    )
-    return detail
-
-
-def project_detail(mirror: Mirror, cat: Category) -> JsonObj:
-    """Everything about a project or category, including its open children."""
-    labels = {lb.id: lb.title for lb in mirror.labels()}
-    kids = [c for c in mirror.categories() if c.parent_id == cat.id and not c.done]
-    tasks = mirror.search(TaskFilter(parent_id=cat.id, include_descendants=False))
-    extra = cat.model_extra or {}
-    return _compact(
-        {
-            "id": cat.id,
-            "title": cat.title,
-            "type": cat.type,
-            "parent": " > ".join(mirror.path(cat.parent_id)),
-            "parent_id": cat.parent_id,
-            "labels": [labels.get(i, i) for i in cat.label_ids],
-            "do_date": cat.day if cat.day != INBOX else None,
-            "due_date": cat.due_date,
-            "end_date": cat.end_date,
-            "start_date": cat.start_date,
-            "planned_week": cat.planned_week,
-            "planned_month": cat.planned_month,
-            "review_date": cat.review_date,
-            "priority": cat.priority,
-            "estimate_min": cat.estimate_minutes,
-            "frog": cat.frog_level,
-            "backburner": cat.backburner,
-            "done": cat.done,
-            "note": cat.note,
-            "subprojects": [
-                _compact({"id": c.id, "title": c.title, "type": c.type})
-                for c in sorted(kids, key=lambda c: c.rank)
-            ],
-            "open_tasks": [task_summary(mirror, t) for t in tasks],
-            "created_at": _iso(cat.created_at),
-            "updated_at": _iso(cat.updated_at),
-            "other_fields": {
-                k: v
-                for k, v in extra.items()
-                if k not in _NOISE and v not in (None, "", 0, False, [], {})
-            },
-        }
-    )
-
-
 def _iso(ms: float | None) -> str | None:
     if not ms:
         return None
     return datetime.fromtimestamp(ms / 1000).astimezone().isoformat(timespec="minutes")
 
 
-def _summaries(mirror: Mirror, tasks: list[Task], limit: int) -> JsonObj:
-    shown = tasks[:limit]
-    out: JsonObj = {
-        "count": len(tasks),
-        "tasks": [task_summary(mirror, t) for t in shown],
+def _now_ms() -> int:
+    return int(datetime.now().timestamp() * 1000)  # noqa: DTZ005
+
+
+def _ms(minutes: float | None) -> int | None:
+    return None if minutes is None else int(minutes * MS_PER_MINUTE)
+
+
+def _compact(obj: JsonObj) -> JsonObj:
+    return {k: v for k, v in obj.items() if v not in (None, False, [], "", {}, 0)}
+
+
+# --- rendering ------------------------------------------------------------------------
+def task_summary(mirror: Mirror, task: Task) -> ItemSummary:
+    """One-line-ish view of a task, with ids resolved to names."""
+    labels = {lb.id: lb.title for lb in mirror.labels()}
+    note = (task.note or "").strip()
+    subtasks = list(task.subtasks.values())
+    return ItemSummary(
+        id=task.id,
+        title=task.title,
+        type="task",
+        parent=" > ".join(mirror.path(task.parent_id)),
+        labels=[labels.get(i, i) for i in task.label_ids],
+        do_date=task.day if task.day != INBOX else None,
+        due_date=task.due_date,
+        end_date=task.end_date,
+        start_date=task.start_date,
+        planned_week=task.planned_week,
+        planned_month=task.planned_month,
+        estimate_min=task.estimate_minutes,
+        importance=task.star_level,
+        frog=task.frog_level,
+        backburner=task.backburner,
+        done=task.done,
+        recurring=task.recurring,
+        tracking=task.is_tracking,
+        subtasks=f"{sum(s.done for s in subtasks)}/{len(subtasks)}"
+        if subtasks
+        else None,
+        note_preview=note[:NOTE_PREVIEW] + ("…" if len(note) > NOTE_PREVIEW else "")
+        if note
+        else None,
+    )
+
+
+def item_summary(mirror: Mirror, cat: Category) -> ItemSummary:
+    """Summary of a project/category in the same shape as a task."""
+    labels = {lb.id: lb.title for lb in mirror.labels()}
+    note = (cat.note or "").strip()
+    return ItemSummary(
+        id=cat.id,
+        title=cat.title,
+        type=cat.type,
+        parent=" > ".join(mirror.path(cat.parent_id)),
+        labels=[labels.get(i, i) for i in cat.label_ids],
+        do_date=cat.day if cat.day != INBOX else None,
+        due_date=cat.due_date,
+        end_date=cat.end_date,
+        start_date=cat.start_date,
+        planned_week=cat.planned_week,
+        planned_month=cat.planned_month,
+        estimate_min=cat.estimate_minutes,
+        frog=cat.frog_level,
+        backburner=cat.backburner,
+        done=cat.done,
+        note_preview=note[:NOTE_PREVIEW] if note else None,
+    )
+
+
+def _other_fields(extra: JsonObj | None) -> JsonObj:
+    return {
+        k: v
+        for k, v in (extra or {}).items()
+        if k not in _NOISE and v not in (None, "", 0, False, [], {})
     }
-    if len(tasks) > limit:
-        out["truncated"] = (
-            f"showing {limit} of {len(tasks)}; narrow the filter or raise limit"
-        )
-    return out
 
 
-def structure(mirror: Mirror) -> JsonObj:
+def task_detail(mirror: Mirror, task: Task) -> ItemDetail:
+    """Everything about a task, including raw fields we don't model."""
+    # dict(model) keeps every field; model_dump() would drop the compacted ones.
+    summary = dict(task_summary(mirror, task))
+    summary.pop("note_preview", None)
+    return ItemDetail.model_validate(
+        {
+            **summary,
+            "parent_id": task.parent_id,
+            "note": task.note,
+            "review_date": task.review_date,
+            "daily_section": task.daily_section,
+            "first_scheduled": task.first_scheduled,
+            "subtask_list": [
+                SubtaskOut(id=s.id, title=s.title, done=s.done)
+                for s in sorted(task.subtasks.values(), key=lambda s: s.rank)
+            ],
+            "depends_on": [
+                str(mirror.docs.get(i, {}).get("title", i)) for i in task.depends_on
+            ],
+            "minutes_tracked": task.duration / MS_PER_MINUTE if task.duration else None,
+            "created_at": _iso(task.created_at),
+            "updated_at": _iso(task.updated_at),
+            "done_at": _iso(task.done_at),
+            "other_fields": _other_fields(task.model_extra),
+        }
+    )
+
+
+def project_detail(mirror: Mirror, cat: Category) -> ItemDetail:
+    """Everything about a project or category, including its open children."""
+    kids = [c for c in mirror.categories() if c.parent_id == cat.id and not c.done]
+    tasks = mirror.search(TaskFilter(parent_id=cat.id, include_descendants=False))
+    summary = dict(item_summary(mirror, cat))
+    summary.pop("note_preview", None)
+    return ItemDetail.model_validate(
+        {
+            **summary,
+            "parent_id": cat.parent_id,
+            "note": cat.note,
+            "review_date": cat.review_date,
+            "priority": cat.priority,
+            "subprojects": [
+                ItemRef(id=c.id, title=c.title, type=c.type)
+                for c in sorted(kids, key=lambda c: c.rank)
+            ],
+            "open_tasks": [task_summary(mirror, t) for t in tasks],
+            "created_at": _iso(cat.created_at),
+            "updated_at": _iso(cat.updated_at),
+            "other_fields": _other_fields(cat.model_extra),
+        }
+    )
+
+
+def _task_list(mirror: Mirror, tasks: list[Task], limit: int) -> TaskList:
+    truncated = (
+        f"showing {limit} of {len(tasks)}; narrow the filter or raise limit"
+        if len(tasks) > limit
+        else None
+    )
+    return TaskList(
+        count=len(tasks),
+        tasks=[task_summary(mirror, t) for t in tasks[:limit]],
+        truncated=truncated,
+    )
+
+
+def structure(mirror: Mirror) -> Structure:
     """Category/project tree with open-task counts, labels by group, strategies."""
     open_counts: dict[str, int] = {}
     for task in mirror.tasks():
         if not task.done:
             open_counts[task.parent_id] = open_counts.get(task.parent_id, 0) + 1
-    cats = mirror.categories()
     children: dict[str, list[Category]] = {}
-    for cat in cats:
+    for cat in mirror.categories():
         children.setdefault(cat.parent_id, []).append(cat)
 
-    def node(cat: Category) -> JsonObj:
+    def node(cat: Category) -> TreeNode:
         kids = sorted(children.get(cat.id, []), key=lambda c: c.rank)
-        return _compact(
-            {
-                "id": cat.id,
-                "title": cat.title,
-                "type": cat.type,
-                "open_tasks": open_counts.get(cat.id, 0),
-                "do_date": cat.day if cat.is_project else None,
-                "due_date": cat.due_date if cat.is_project else None,
-                "done": cat.done if cat.is_project else None,
-                "children": [node(c) for c in kids],
-            }
+        return TreeNode(
+            id=cat.id,
+            title=cat.title,
+            type=cat.type,
+            open_tasks=open_counts.get(cat.id, 0),
+            do_date=cat.day if cat.is_project and cat.day != INBOX else None,
+            due_date=cat.due_date if cat.is_project else None,
+            done=cat.done if cat.is_project else False,
+            children=[node(c) for c in kids],
         )
 
     groups = {g.id: g for g in mirror.label_groups()}
-    by_group: dict[str | None, list[JsonObj]] = {}
+    by_group: dict[str | None, list[LabelOut]] = {}
     for label in mirror.labels():
         by_group.setdefault(label.group_id, []).append(
-            _compact({"id": label.id, "title": label.title, "hidden": label.is_hidden})
+            LabelOut(id=label.id, title=label.title, hidden=label.is_hidden)
         )
-    labels = [
-        {
-            "group": groups[gid].title if gid in groups else None,
-            "exclusive": groups[gid].is_exclusive if gid in groups else False,
-            "labels": items,
-        }
-        for gid, items in by_group.items()
-    ]
     roots = sorted(children.get("root", []), key=lambda c: c.rank)
-    return {
-        "inbox_open_tasks": open_counts.get(INBOX, 0),
-        "tree": [node(c) for c in roots],
-        "labels": labels,
-        "enabled_strategies": mirror.enabled_strategies(),
-        "mirror": {"documents": len(mirror.docs), "age_seconds": round(mirror.age)},
-    }
+    return Structure(
+        inbox_open_tasks=open_counts.get(INBOX, 0),
+        tree=[node(c) for c in roots],
+        labels=[
+            LabelGroupOut(
+                group=groups[gid].title if gid in groups else None,
+                exclusive=groups[gid].is_exclusive if gid in groups else False,
+                labels=items,
+            )
+            for gid, items in by_group.items()
+        ],
+        enabled_strategies=mirror.enabled_strategies(),
+        mirror=MirrorInfo(documents=len(mirror.docs), age_seconds=round(mirror.age)),
+    )
 
 
 # --- the server -----------------------------------------------------------------------
@@ -364,6 +382,7 @@ def create_server(
     settings = settings or Settings()
     state = state or build_state(settings)
     mirror, api = state.mirror, state.api
+    workflow = Workflow(settings.workflow_file)
 
     @contextlib.asynccontextmanager
     async def lifespan(_server: MCPServer[None]) -> AsyncIterator[None]:
@@ -376,7 +395,7 @@ def create_server(
 
     mcp = MCPServer(
         "marvin",
-        instructions=instructions_for(settings),
+        instructions=instructions_for(workflow),
         version=__version__,
         lifespan=lifespan,
     )
@@ -393,11 +412,16 @@ def create_server(
     # --- resources / prompts -----------------------------------------------------
     @mcp.resource("marvin://workflow", mime_type="text/markdown")
     def workflow_resource() -> str:
-        """How this user works with Marvin (their own words)."""
-        return load_workflow(settings.workflow_file) or NO_WORKFLOW
+        """How this user works with Marvin (their own words), all sections."""
+        return workflow.text()
+
+    @mcp.resource("marvin://workflow/{section}", mime_type="text/markdown")
+    def workflow_section(section: str) -> str:
+        """One section of the user's workflow (a file in the workflow directory)."""
+        return workflow.section(section)
 
     @mcp.resource("marvin://structure", mime_type="application/json")
-    async def structure_resource() -> JsonObj:
+    async def structure_resource() -> Structure:
         """Category/project tree, labels, and enabled strategies."""
         return structure(await fresh())
 
@@ -409,7 +433,7 @@ def create_server(
             "a time: propose the changes my workflow calls for (title, labels, "
             "estimate, parent, do date / end date, deadline), ask me only when "
             "genuinely unclear, apply with `update_task`, then move to the next "
-            f"item.\n\n{workflow_resource()}"
+            f"item.\n\n{workflow.text(prefer='triage')}"
         )
 
     @mcp.prompt()
@@ -417,18 +441,19 @@ def create_server(
         """Show what the user checks every day."""
         return (
             "Give me my daily Marvin review: call `list_today`, and anything else my "
-            f"workflow says I check daily. Keep it scannable.\n\n{workflow_resource()}"
+            "workflow says I check daily. Keep it scannable.\n\n"
+            f"{workflow.text(prefer='daily')}"
         )
 
     # --- read tools ----------------------------------------------------------------
     @mcp.tool()
-    async def sync_marvin() -> JsonObj:
+    async def sync_marvin() -> SyncResult:
         """Force-refresh the local mirror from Marvin (normally automatic)."""
         changed = await mirror.refresh(force=True)
-        return {"changed_documents": changed, "documents": len(mirror.docs)}
+        return SyncResult(changed_documents=changed, documents=len(mirror.docs))
 
     @mcp.tool()
-    async def get_structure() -> JsonObj:
+    async def get_structure() -> Structure:
         """Category/project tree with ids and open-task counts, labels by group, strategies in use.
 
         Call this once at the start of a session; it is how you map names to ids.
@@ -436,15 +461,15 @@ def create_server(
         return structure(await fresh())
 
     @mcp.tool()
-    async def list_inbox(limit: int = 50) -> JsonObj:
+    async def list_inbox(limit: int = 50) -> TaskList:
         """Open tasks in the Inbox (not filed in any category/project), oldest first."""
         m = await fresh()
         tasks = m.search(TaskFilter(parent_id=INBOX, include_descendants=False))
         tasks.sort(key=lambda t: t.created_at or 0)
-        return _summaries(m, tasks, limit)
+        return _task_list(m, tasks, limit)
 
     @mcp.tool()
-    async def list_today(day: str = "today") -> JsonObj:
+    async def list_today(day: str = "today") -> DayView:
         """What's on for a day: do date that day, do date earlier but not done, due by then.
 
         Args:
@@ -452,18 +477,20 @@ def create_server(
         """
         m = await fresh()
         d = parse_day(day)
-        scheduled = m.search(TaskFilter(day_from=d, day_to=d))
-        overdue = m.search(TaskFilter(day_to=d - timedelta(days=1)))
-        due = m.search(TaskFilter(due_by=d))
-        return {
-            "date": d.isoformat(),
-            "scheduled": [task_summary(m, t) for t in scheduled],
-            "scheduled_earlier_not_done": [task_summary(m, t) for t in overdue],
-            "due_by_then": [task_summary(m, t) for t in due],
-        }
+        return DayView(
+            date=d.isoformat(),
+            scheduled=[
+                task_summary(m, t) for t in m.search(TaskFilter(day_from=d, day_to=d))
+            ],
+            scheduled_earlier_not_done=[
+                task_summary(m, t)
+                for t in m.search(TaskFilter(day_to=d - timedelta(days=1)))
+            ],
+            due_by_then=[task_summary(m, t) for t in m.search(TaskFilter(due_by=d))],
+        )
 
     @mcp.tool()
-    async def list_due(by: str = "week", limit: int = 100) -> JsonObj:
+    async def list_due(by: str = "week", limit: int = 100) -> DueList:
         """Open tasks with a Due date on or before a day (default: end of this week).
 
         Args:
@@ -474,7 +501,13 @@ def create_server(
         d = parse_day(by)
         tasks = m.search(TaskFilter(due_by=d))
         tasks.sort(key=lambda t: (t.due or date.max, t.title))
-        return {"by": d.isoformat()} | _summaries(m, tasks, limit)
+        page = _task_list(m, tasks, limit)
+        return DueList(
+            by=d.isoformat(),
+            count=page.count,
+            tasks=page.tasks,
+            truncated=page.truncated,
+        )
 
     @mcp.tool()
     async def search_tasks(
@@ -520,7 +553,7 @@ def create_server(
             bool | None, Field(description="False (default) = open only")
         ] = False,
         limit: int = 50,
-    ) -> JsonObj:
+    ) -> TaskList:
         """Find tasks by any combination of filters (all ANDead). Unset filters are ignored.
 
         This is the tool for "what can I do in 5 minutes", "everything tagged X",
@@ -546,12 +579,12 @@ def create_server(
             backburner=backburner,
             done=done,
         )
-        return _summaries(m, m.search(flt), min(limit, MAX_RESULTS))
+        return _task_list(m, m.search(flt), min(limit, MAX_RESULTS))
 
     @mcp.tool()
     async def get_task(
         task_id: Annotated[str, Field(description="task or project id")],
-    ) -> JsonObj:
+    ) -> ItemDetail:
         """Full details of one task (note, subtasks, dates, tracking) or project (its open children)."""
         m = await fresh()
         doc = m.docs.get(task_id)
@@ -560,21 +593,23 @@ def create_server(
         return task_detail(m, m.task(task_id))
 
     @mcp.tool()
-    async def list_children(parent: str, limit: int = 100) -> JsonObj:
+    async def list_children(parent: str, limit: int = 100) -> Children:
         """Open tasks and sub-projects directly inside a project/category (by id or name)."""
         m = await fresh()
         pid = m.resolve_parent(parent)
         subs = [c for c in m.categories() if c.parent_id == pid and not c.done]
         tasks = m.search(TaskFilter(parent_id=pid, include_descendants=False))
-        return {
-            "parent": " > ".join(m.path(pid)),
-            "subprojects": [
-                _compact(
-                    {"id": c.id, "title": c.title, "type": c.type, "do_date": c.day}
-                )
+        page = _task_list(m, tasks, limit)
+        return Children(
+            parent=" > ".join(m.path(pid)),
+            subprojects=[
+                ItemRef(id=c.id, title=c.title, type=c.type, do_date=c.day or None)
                 for c in sorted(subs, key=lambda c: c.rank)
             ],
-        } | _summaries(m, tasks, limit)
+            count=page.count,
+            tasks=page.tasks,
+            truncated=page.truncated,
+        )
 
     # --- write tools ---------------------------------------------------------------
     @mcp.tool()
@@ -605,13 +640,14 @@ def create_server(
         ] = None,
         planned_month: Annotated[str | None, Field(description="YYYY-MM")] = None,
         backburner: bool = False,
-    ) -> JsonObj:
+    ) -> Created:
         """Create a task. Names for parent/labels are resolved here; don't use #/@ shortcuts."""
         m = await fresh()
+        parent_id = m.resolve_parent(parent)
         payload: JsonObj = _compact(
             {
                 "title": title,
-                "parentId": m.resolve_parent(parent),
+                "parentId": parent_id,
                 "labelIds": [m.resolve_label(lb).id for lb in labels]
                 if labels
                 else None,
@@ -630,14 +666,16 @@ def create_server(
         payload["timeZoneOffset"] = tz_offset_minutes()
         result = await api.add_task(payload)
         _absorb(mirror, result)
-        new_id = result.get("_id")
+        new_id_ = result.get("_id")
         # addTask ignores start/end dates; set them with a follow-up edit.
         follow_up: JsonObj = _compact(
             {"endDate": _opt_day(end_date), "startDate": _opt_day(start_date)}
         )
-        if follow_up and isinstance(new_id, str):
-            mirror.apply(await api.update_doc(new_id, follow_up))
-        return {"created": new_id, "title": title}
+        if follow_up and isinstance(new_id_, str):
+            mirror.apply(await api.update_doc(new_id_, follow_up))
+        return Created(
+            created=str(new_id_), title=title, parent=" > ".join(m.path(parent_id))
+        )
 
     @mcp.tool()
     async def create_project(
@@ -650,13 +688,14 @@ def create_server(
         due_date: str | None = None,
         note: str | None = None,
         priority: Annotated[str | None, Field(description="low, mid, high")] = None,
-    ) -> JsonObj:
+    ) -> Created:
         """Create a project (container for tasks). Convert an inbox item into one with this + update_task(parent=…)."""
         m = await fresh()
+        parent_id = m.resolve_parent(parent)
         payload: JsonObj = _compact(
             {
                 "title": title,
-                "parentId": m.resolve_parent(parent),
+                "parentId": parent_id,
                 "labelIds": [m.resolve_label(lb).id for lb in labels]
                 if labels
                 else None,
@@ -670,7 +709,11 @@ def create_server(
         payload["timeZoneOffset"] = tz_offset_minutes()
         result = await api.add_project(payload)
         _absorb(mirror, result)
-        return {"created": result.get("_id"), "title": title}
+        return Created(
+            created=str(result.get("_id")),
+            title=title,
+            parent=" > ".join(m.path(parent_id)),
+        )
 
     @mcp.tool()
     async def update_task(
@@ -719,7 +762,7 @@ def create_server(
                 "estimate, note, planned_week, planned_month, review_date"
             ),
         ] = None,
-    ) -> JsonObj:
+    ) -> Updated:
         """Edit a task or project: rename, move, relabel, (re)schedule, deadlines, estimate, note.
 
         Only the arguments you pass are changed. Requires the full-access token.
@@ -776,11 +819,12 @@ def create_server(
             raise ValueError("nothing to change")
         result = await api.update_doc(item_id, changes)
         mirror.apply(result)
-        if result.get("db") == "Tasks":
-            return {"updated": sorted(changes)} | task_summary(
-                m, Task.model_validate(result)
-            )
-        return {"updated": sorted(changes), "id": item_id, "title": result.get("title")}
+        summary = (
+            task_summary(m, Task.model_validate(result))
+            if result.get("db") == "Tasks"
+            else item_summary(m, Category.model_validate(result))
+        )
+        return Updated.model_validate({"updated": sorted(changes), **dict(summary)})
 
     @mcp.tool()
     async def update_subtasks(
@@ -801,7 +845,7 @@ def create_server(
         rename: Annotated[
             dict[str, str] | None, Field(description="{id or title: new title}")
         ] = None,
-    ) -> JsonObj:
+    ) -> ItemDetail:
         """Add, complete, reopen, rename or remove subtasks of a task. Requires full access."""
         m = await fresh()
         task = m.task(task_id)
@@ -850,7 +894,7 @@ def create_server(
             str, Field(description="parent category id or name; 'root' = top level")
         ] = "root",
         color: Annotated[str | None, Field(description="#RRGGBB")] = None,
-    ) -> JsonObj:
+    ) -> Created:
         """Create a category (a folder in the Master List). Categories can only live under categories."""
         m = await fresh()
         parent_id = m.resolve_parent(parent)
@@ -873,11 +917,11 @@ def create_server(
         )
         stored = doc | await api.create_doc(doc)
         mirror.apply(stored)
-        return {
-            "created": stored["_id"],
-            "title": title,
-            "parent": " > ".join(m.path(parent_id)),
-        }
+        return Created(
+            created=str(stored["_id"]),
+            title=title,
+            parent=" > ".join(m.path(parent_id)),
+        )
 
     @mcp.tool()
     async def create_label(
@@ -892,7 +936,7 @@ def create_server(
             bool, Field(description="only one label of the new group per task")
         ] = False,
         color: Annotated[str | None, Field(description="#RRGGBB")] = None,
-    ) -> JsonObj:
+    ) -> Created:
         """Create a label (optionally inside an existing or new label group).
 
         Requires the Task Labels strategy to be enabled in Marvin.
@@ -940,14 +984,15 @@ def create_server(
         labels.append(label)
         mirror.apply(await _write_profile(api, m, LABELS_DOC, labels, now))
         stored = m.resolve_label(title)  # id as Marvin stored it
-        return {"created": stored.id, "title": title, "group": new_group or group}
+        return Created(created=stored.id, title=title, group=new_group or group)
 
     @mcp.tool()
-    async def mark_done(item_id: str) -> JsonObj:
+    async def mark_done(item_id: str) -> Done:
         """Mark a task or project done (handles recurring/echo tasks and stops tracking)."""
         result = await api.mark_done(item_id, tz_offset_minutes())
         _absorb(mirror, result)
-        return {"done": item_id, "title": result.get("title")}
+        title = result.get("title")
+        return Done(done=item_id, title=title if isinstance(title, str) else None)
 
     return mcp
 
@@ -966,10 +1011,6 @@ _CLEARABLE: dict[str, tuple[str, object]] = {
 }
 
 
-def _now_ms() -> int:
-    return int(datetime.now().timestamp() * 1000)  # noqa: DTZ005
-
-
 async def _write_profile(
     api: MarvinAPI, mirror: Mirror, doc_id: str, value: object, now: int
 ) -> JsonObj:
@@ -984,10 +1025,6 @@ async def _write_profile(
         "updatedAt": now,
     }
     return doc | await api.create_doc(doc)
-
-
-def _ms(minutes: float | None) -> int | None:
-    return None if minutes is None else int(minutes * MS_PER_MINUTE)
 
 
 def _absorb(mirror: Mirror, result: JsonObj) -> None:

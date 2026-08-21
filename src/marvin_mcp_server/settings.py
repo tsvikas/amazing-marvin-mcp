@@ -22,6 +22,12 @@ def default_cache_dir() -> Path:
     return Path(platformdirs.user_cache_dir(APP_NAME))
 
 
+def _default_workflow_path() -> Path:
+    """``workflow/`` directory if the user made one, else ``workflow.md``."""
+    directory = default_config_dir() / "workflow"
+    return directory if directory.is_dir() else default_config_dir() / "workflow.md"
+
+
 class Settings(BaseSettings):
     """Runtime settings.
 
@@ -49,8 +55,9 @@ class Settings(BaseSettings):
     sync_password: SecretStr | None = Field(default=None, description="syncPassword")
 
     workflow_file: Path = Field(
-        default_factory=lambda: default_config_dir() / "workflow.md",
-        description="Markdown describing how *this* user works; exposed to the model",
+        default_factory=_default_workflow_path,
+        description="Markdown (file, or directory of sections) describing how *this* "
+        "user works; exposed to the model",
     )
     cache_dir: Path = Field(default_factory=default_cache_dir)
 

@@ -1,18 +1,20 @@
 """Tool-level tests: call tools through the MCPServer with a mocked REST API."""
 
 import json
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
+import respx
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, GetPromptResult, InputRequiredResult
 from pydantic import SecretStr
 
-from marvin_mcp_server.api import MarvinAPI
+from marvin_mcp_server.api import BASE_URL, MarvinAPI
 from marvin_mcp_server.mirror import Mirror
 from marvin_mcp_server.server import State, create_server, parse_day
 from marvin_mcp_server.settings import Settings
@@ -59,7 +61,9 @@ def fake(mirror: Mirror) -> FakeMarvin:
 
 
 @pytest.fixture
-def server(mirror: Mirror, fake: FakeMarvin, tmp_path: Path) -> MCPServer[None]:
+def server(
+    mirror: Mirror, fake: FakeMarvin, tmp_path: Path
+) -> Iterator[MCPServer[None]]:
     settings = Settings(
         api_token=SecretStr("a"),
         full_access_token=SecretStr("f"),
@@ -67,14 +71,11 @@ def server(mirror: Mirror, fake: FakeMarvin, tmp_path: Path) -> MCPServer[None]:
         cache_dir=tmp_path,
         _env_file=None,  # type: ignore[call-arg]
     )
-    api = MarvinAPI(
-        api_token="a",
-        full_access_token="f",
-        min_interval=0,
-        client=httpx.AsyncClient(transport=httpx.MockTransport(fake)),
-    )
+    api = MarvinAPI(api_token="a", full_access_token="f", min_interval=0)
     state = State(settings=settings, mirror=mirror, api=api, couch=None)
-    return create_server(settings, state=state)
+    with respx.mock(base_url=BASE_URL, assert_all_called=False) as router:
+        router.route().mock(side_effect=fake)
+        yield create_server(settings, state=state)
 
 
 async def call(server: MCPServer[None], name: str, **args: object) -> Json:

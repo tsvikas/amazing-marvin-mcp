@@ -46,10 +46,11 @@ the REST API, which handles Marvin's conflict-resolution bookkeeping
 - **Your structure** (`get_structure`): the category/project tree with ids and
   open-task counts, labels by group, and which Marvin strategies you have
   enabled (by their names in the Strategies screen).
-- **Your workflow** (`workflow.md`): how *you* use Marvin: what labels mean,
-  how you plan, your inbox-triage checklist, what "short win" means. Marvin is
-  flexible, so this file is what lets the assistant act the way you would.
-  It is injected into the server instructions and exposed as `marvin://workflow`.
+- **Your workflow** (`workflow.md` or a `workflow/` directory of sections):
+  how *you* use Marvin: what labels mean, how you plan, your inbox-triage
+  checklist, what "short win" means. Marvin is flexible, so this is what lets
+  the assistant act the way you would. It is injected into the server
+  instructions and exposed as `marvin://workflow` (and `marvin://workflow/<section>`).
 
 ### Tools
 
@@ -107,8 +108,13 @@ deletes are unrecoverable.
 1. **Describe your workflow:**
 
    ```bash
-   marvin-mcp-server init-workflow   # writes a template; edit it
+   marvin-mcp-server init-workflow            # one workflow.md to edit, or
+   marvin-mcp-server init-workflow --split    # a workflow/ directory: planning, labels, triage, daily…
    ```
+
+   Everything in it goes into the model's instructions (and each section is
+   also a `marvin://workflow/<section>` resource), so keep it short and
+   concrete.
 
 1. **Register with your MCP client.**
 
@@ -131,7 +137,7 @@ deletes are unrecoverable.
    Both read the per-user `.env`, so no secrets go in the client config.
    Then ask: "what's in my Marvin inbox?"
 
-Other settings (shown by `check`): `MARVIN_WORKFLOW_FILE`, `MARVIN_CACHE_DIR`,
+Other settings (shown by `check`): `MARVIN_WORKFLOW_FILE` (file or directory), `MARVIN_CACHE_DIR`,
 `MARVIN_MIN_REQUEST_INTERVAL` (seconds between REST calls, default 3),
 `MARVIN_MIRROR_MAX_AGE` (seconds before a read re-polls, default 60).
 
