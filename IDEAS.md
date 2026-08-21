@@ -26,6 +26,23 @@ it ships; delete it when it stops being a good idea.
 - **Bulk operations**: `update_tasks(ids, …)` batched behind the rate limiter,
   with progress notifications, for "move all of these to Home".
 
+## Desktop local API server
+
+The desktop app can serve a subset of the API on `http://localhost:12082`
+(API strategy → "local API server"; same `X-API-Token` / `X-Full-Access-Token`
+headers and paths; marvin-cli tries it first and falls back to the cloud).
+Not used yet. Worth adding for:
+
+- **`GET /api/list?filter=<smart-list filter>&done=`** (desktop only): runs
+  Marvin's own advanced-filter language over all open (or recently done)
+  items. Lets a `run_filter` tool and the user's saved Smart Lists work
+  exactly as in the app, instead of us reimplementing the filter syntax.
+- **Users with cloud sync disabled**: the mirror can't exist; local `list`
+  could be the read backend instead.
+- Writes bypass the internet and presumably the cloud rate limits (unverified).
+- Limits: the desktop app must be running; `done` items only go back 6 weeks
+  unless the app is in archive mode; endpoint set is smaller than the cloud's.
+
 ## Sync and performance
 
 - **Two-phase initial sync** if a real database is large: Mango `_find` for
@@ -61,6 +78,12 @@ it ships; delete it when it stops being a good idea.
   check the mirror without an MCP client.
 
 ## Open questions
+
+- Is there any schema/discovery endpoint? None found: the wiki's
+  `marvin-api.yaml` (2024) is a hand-written OpenAPI file, not served by the
+  API, and marvin-cli ships its endpoint docs as a static table. Our answer
+  is `get_task(...).other_fields`, which surfaces whatever fields exist in
+  live documents.
 
 - Should the server expose Marvin's own REST read endpoints at all (e.g.
   `todayItems` honours rollover/auto-schedule settings that the mirror-based
