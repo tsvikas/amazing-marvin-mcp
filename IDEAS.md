@@ -57,6 +57,10 @@ Not used yet. Worth adding for:
 
 ## Assistant quality
 
+- **Default workflow from a real one**: once the author's own workflow files
+  are written, derive a minimal sample workflow from them to ship as the
+  template (concrete label/triage examples beat the current blank prompts).
+
 - **Conversation evals** with the Claude Agent SDK: scenario prompts ("what's in
   my inbox", "I'm at the car with 10 minutes", "rename X") asserting which
   tools were called with which arguments. Only way to test the instructions.
