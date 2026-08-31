@@ -8,6 +8,7 @@ import pytest
 import respx
 
 from amazing_marvin_mcp.couch import CouchClient
+from amazing_marvin_mcp.errors import MarvinError
 from amazing_marvin_mcp.mirror import AmbiguousError, Mirror, NotFoundError, TaskFilter
 from amazing_marvin_mcp.models import INBOX, Task
 
@@ -249,3 +250,15 @@ async def test_refresh_applies_changes_and_deletes(tmp_path: Path) -> None:
 async def test_refresh_without_couch_is_noop(tmp_path: Path) -> None:
     mirror = Mirror(None, tmp_path / "m.json")
     assert await mirror.refresh(force=True) == 0
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("no_retry_wait")
+@respx.mock
+async def test_unreachable_database_names_the_host() -> None:
+    respx.get("https://db.example.com/u123/_changes").mock(
+        side_effect=httpx.ConnectError("boom")
+    )
+    couch = CouchClient("db.example.com", "u123", "user", "pw")
+    with pytest.raises(MarvinError, match=r"cannot reach .*: boom"):
+        await couch.changes()
