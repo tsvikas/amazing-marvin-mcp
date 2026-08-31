@@ -3,7 +3,11 @@
 from pathlib import Path
 
 import pytest
+from tenacity import retry, retry_if_exception, stop_after_attempt
 
+from amazing_marvin_mcp import api as api_module
+from amazing_marvin_mcp import couch as couch_module
+from amazing_marvin_mcp.api import is_transient
 from amazing_marvin_mcp.mirror import Mirror
 from amazing_marvin_mcp.models import JsonObj
 
@@ -17,6 +21,18 @@ def doc(db: str, _id: str, **fields: object) -> JsonObj:
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.fixture
+def no_retry_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Apply the same retry policy without the backoff sleeps."""
+    policy = retry(
+        retry=retry_if_exception(is_transient),
+        stop=stop_after_attempt(4),
+        reraise=True,
+    )
+    for module in (api_module, couch_module):
+        monkeypatch.setattr(module, "transient_retry", policy)
 
 
 @pytest.fixture

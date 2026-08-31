@@ -4,15 +4,12 @@ from collections.abc import Iterator
 import httpx
 import pytest
 import respx
-from tenacity import retry, retry_if_exception, stop_after_attempt
 
-from amazing_marvin_mcp import api as api_module
 from amazing_marvin_mcp.api import (
     BASE_URL,
     MarvinAPI,
     MarvinAPIError,
     MissingTokenError,
-    is_transient,
 )
 from amazing_marvin_mcp.errors import MarvinError
 
@@ -26,20 +23,6 @@ def api() -> MarvinAPI:
 def marvin() -> Iterator[respx.Router]:
     with respx.mock(base_url=BASE_URL, assert_all_called=False) as router:
         yield router
-
-
-@pytest.fixture
-def no_retry_wait(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Apply the same retry policy without the backoff sleeps."""
-    monkeypatch.setattr(
-        api_module,
-        "transient_retry",
-        retry(
-            retry=retry_if_exception(is_transient),
-            stop=stop_after_attempt(4),
-            reraise=True,
-        ),
-    )
 
 
 @pytest.mark.anyio

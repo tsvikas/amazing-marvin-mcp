@@ -247,6 +247,36 @@ async def test_create_task_payload(server: MCPServer[None], fake: FakeMarvin) ->
 
 
 @pytest.mark.anyio
+async def test_create_project_payload(
+    server: MCPServer[None], fake: FakeMarvin
+) -> None:
+    out = await call(
+        server,
+        "create_project",
+        title="Kitchen remodel",
+        parent="Home",
+        labels=["car"],
+        do_date="2026-09-01",
+        due_date="2026-09-30",
+        note="rough plan",
+        priority="mid",
+    )
+    assert out["created"] == "created-id"
+    assert out["parent"] == "Home"
+    path, body = fake.requests[0]
+    assert path == "/api/addProject"
+    assert body["title"] == "Kitchen remodel"
+    assert body["parentId"] == "home"
+    assert body["labelIds"] == ["lb-car"]
+    assert body["day"] == "2026-09-01"
+    assert body["dueDate"] == "2026-09-30"
+    assert body["note"] == "rough plan"
+    assert body["priority"] == "mid"
+    assert body["done"] is False
+    assert "timeZoneOffset" in body
+
+
+@pytest.mark.anyio
 async def test_update_task_labels_and_clear(
     server: MCPServer[None], fake: FakeMarvin, mirror: Mirror
 ) -> None:
