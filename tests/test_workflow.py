@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from mcp.server.mcpserver.exceptions import ResourceNotFoundError
 
 from amazing_marvin_mcp.workflow import NO_WORKFLOW, Workflow, template_sections
 
@@ -21,7 +22,7 @@ def test_missing_workflow(tmp_path: Path) -> None:
     wf = Workflow(tmp_path / "workflow.md")
     assert wf.sections() == {}
     assert wf.text() == NO_WORKFLOW
-    with pytest.raises(KeyError, match="no workflow section"):
+    with pytest.raises(ResourceNotFoundError, match="no workflow section"):
         wf.section("labels")
 
 

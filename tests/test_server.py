@@ -10,11 +10,12 @@ import httpx
 import pytest
 import respx
 from mcp.server import MCPServer
-from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 from mcp.types import CallToolResult, GetPromptResult, InputRequiredResult
 from pydantic import SecretStr
 
 from amazing_marvin_mcp.api import BASE_URL, MarvinAPI
+from amazing_marvin_mcp.errors import MarvinError
 from amazing_marvin_mcp.mirror import Mirror
 from amazing_marvin_mcp.server import State, create_server, parse_day
 from amazing_marvin_mcp.settings import Settings
@@ -100,6 +101,29 @@ def test_parse_day() -> None:
     assert parse_day("next-week", base=base) == date(2026, 8, 30)
     assert parse_day("month", base=base) == date(2026, 8, 31)
     assert parse_day("2026-01-02", base=base) == date(2026, 1, 2)
+    with pytest.raises(MarvinError, match="is not a date"):
+        parse_day("next friday", base=base)
+
+
+def test_marvin_error_message_reaches_the_model() -> None:
+    """Only a ToolError (tool) or ResourceError (read) keeps its message.
+
+    The mirror and the API clients are reached from both, so ours are both.
+    """
+    assert issubclass(MarvinError, ToolError)
+    assert issubclass(MarvinError, ResourceError)
+
+
+@pytest.mark.anyio
+async def test_structure_resource_reports_a_mirror_failure(
+    server: MCPServer[None], mirror: Mirror
+) -> None:
+    """`fresh()` fails inside a read too, and its message has to survive."""
+    mirror.docs.clear()
+    with pytest.raises(ResourceError) as exc_info:
+        await server.read_resource("marvin://structure")
+    # A ToolError-only MarvinError reads "Error reading resource marvin://structure".
+    assert "mirror is empty" in str(exc_info.value)
 
 
 @pytest.mark.anyio

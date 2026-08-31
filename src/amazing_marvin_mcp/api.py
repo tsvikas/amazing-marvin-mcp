@@ -19,13 +19,15 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
+from .errors import MarvinError
+
 if TYPE_CHECKING:
     from .models import JsonObj
 
 BASE_URL = "https://serv.amazingmarvin.com/api"
 
 
-class MarvinAPIError(RuntimeError):
+class MarvinAPIError(MarvinError):
     """Non-2xx response from the API."""
 
     def __init__(self, status: int, path: str, body: str) -> None:
@@ -34,7 +36,7 @@ class MarvinAPIError(RuntimeError):
         self.status = status
 
 
-class MissingTokenError(RuntimeError):
+class MissingTokenError(MarvinError):
     """The operation needs a token that was not configured."""
 
 
@@ -126,7 +128,10 @@ class MarvinAPI:
                 raise MarvinAPIError(response.status_code, path, response.text)
             return response
 
-        return await send()
+        try:
+            return await send()
+        except httpx.TransportError as exc:
+            raise MarvinError(f"cannot reach {self._base_url}: {exc}") from exc
 
     # --- endpoints ----------------------------------------------------------------
     async def test(self) -> str:

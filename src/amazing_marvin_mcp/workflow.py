@@ -14,6 +14,8 @@ from __future__ import annotations
 from importlib import resources
 from typing import TYPE_CHECKING
 
+from mcp.server.mcpserver.exceptions import ResourceNotFoundError
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -66,7 +68,9 @@ class Workflow:
         """One section by name (file stem without its numeric prefix)."""
         sections = self.sections()
         if name not in sections:
-            raise KeyError(f"no workflow section {name!r}; have {sorted(sections)}")
+            raise ResourceNotFoundError(
+                f"no workflow section {name!r}; have {sorted(sections)}"
+            )
         return sections[name]
 
     def init(self, *, split: bool = False, force: bool = False) -> list[Path]:
