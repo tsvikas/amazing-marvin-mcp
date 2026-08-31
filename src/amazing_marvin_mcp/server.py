@@ -21,6 +21,7 @@ from pydantic import Field, SecretStr
 from . import __version__
 from .api import MarvinAPI
 from .couch import CouchClient
+from .errors import MarvinError
 from .mirror import (
     LABEL_GROUPS_DOC,
     LABELS_DOC,
@@ -167,7 +168,13 @@ def parse_day(value: str, *, base: date | None = None) -> date:  # noqa: PLR0911
             first_next = (base.replace(day=1) + timedelta(days=32)).replace(day=1)
             return first_next - timedelta(days=1)
         case _:
-            return date.fromisoformat(word)
+            try:
+                return date.fromisoformat(word)
+            except ValueError as exc:
+                raise MarvinError(
+                    f"{value!r} is not a date: use YYYY-MM-DD, or today/tomorrow/"
+                    "yesterday/week/next-week/month"
+                ) from exc
 
 
 def _opt_day(value: str | None) -> str | None:
@@ -403,7 +410,7 @@ def create_server(
     async def fresh() -> Mirror:
         await mirror.refresh()
         if not mirror.docs:
-            raise RuntimeError(
+            raise MarvinError(
                 "The mirror is empty. Configure MARVIN_SYNC_* credentials "
                 "(Marvin → Strategies → API → settings) and run `amazing-marvin-mcp sync`."
             )
@@ -770,7 +777,7 @@ def create_server(
         m = await fresh()
         current = m.docs.get(item_id)
         if current is None:
-            raise LookupError(f"no item with id {item_id!r}")
+            raise MarvinError(f"no item with id {item_id!r}")
         changes: JsonObj = _compact(
             {
                 "title": title,
@@ -813,10 +820,12 @@ def create_server(
         for field in clear or []:
             key, empty = _CLEARABLE.get(field, (None, None))
             if key is None:
-                raise ValueError(f"cannot clear {field!r}; one of {sorted(_CLEARABLE)}")
+                raise MarvinError(
+                    f"cannot clear {field!r}; one of {sorted(_CLEARABLE)}"
+                )
             changes[key] = empty
         if not changes:
-            raise ValueError("nothing to change")
+            raise MarvinError("nothing to change")
         result = await api.update_doc(item_id, changes)
         mirror.apply(result)
         summary = (
@@ -863,7 +872,7 @@ def create_server(
                 if str(s.get("title", "")).casefold() == ref.casefold()
             ]
             if len(hits) != 1:
-                raise LookupError(f"subtask {ref!r} not found or ambiguous")
+                raise MarvinError(f"subtask {ref!r} not found or ambiguous")
             return hits[0]
 
         next_rank = (
@@ -882,7 +891,7 @@ def create_server(
         for ref in remove or []:
             del subs[find(ref)]
         if not any((add, complete, reopen, remove, rename)):
-            raise ValueError("nothing to change")
+            raise MarvinError("nothing to change")
         result = await api.update_doc(task_id, {"subtasks": subs})
         mirror.apply(result)
         return task_detail(m, Task.model_validate(result))
@@ -899,7 +908,7 @@ def create_server(
         m = await fresh()
         parent_id = m.resolve_parent(parent)
         if parent_id != "root" and m.category(parent_id).is_project:
-            raise ValueError("categories can't be created inside a project")
+            raise MarvinError("categories can't be created inside a project")
         siblings = [c.rank for c in m.categories() if c.parent_id == parent_id]
         now = _now_ms()
         doc: JsonObj = _compact(
@@ -944,12 +953,12 @@ def create_server(
         m = await fresh()
         strategy = m.docs.get(LABELS_STRATEGY_DOC)
         if not (strategy and strategy.get("val")):
-            raise RuntimeError(
+            raise MarvinError(
                 "The Task Labels strategy is off; enable it in Marvin (Strategies) first."
             )
         for existing in m.labels():
             if existing.title.casefold() == title.casefold():
-                raise ValueError(
+                raise MarvinError(
                     f"label {existing.title!r} already exists ({existing.id})"
                 )
         now = _now_ms()

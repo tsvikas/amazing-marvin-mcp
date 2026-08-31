@@ -14,6 +14,7 @@ from amazing_marvin_mcp.api import (
     MissingTokenError,
     is_transient,
 )
+from amazing_marvin_mcp.errors import MarvinError
 
 
 @pytest.fixture
@@ -118,6 +119,16 @@ async def test_transient_errors_are_retried(
     ]
     assert await api.me() == {"email": "x"}
     assert route.call_count == 3
+
+
+@pytest.mark.usefixtures("no_retry_wait")
+@pytest.mark.anyio
+async def test_unreachable_api_names_the_host(
+    api: MarvinAPI, marvin: respx.Router
+) -> None:
+    marvin.get("/me").mock(side_effect=httpx.ConnectError("boom"))
+    with pytest.raises(MarvinError, match=r"cannot reach .*: boom"):
+        await api.me()
 
 
 @pytest.mark.usefixtures("no_retry_wait")

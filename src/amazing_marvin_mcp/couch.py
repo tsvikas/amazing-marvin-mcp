@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from .api import transient_retry
+from .errors import MarvinError
 
 if TYPE_CHECKING:
     from .models import JsonObj
@@ -27,7 +28,7 @@ class Changes:
     deleted_ids: list[str] = field(default_factory=list)
 
 
-class CouchError(RuntimeError):
+class CouchError(MarvinError):
     """Non-2xx response from the database."""
 
     def __init__(self, status: int, body: str) -> None:
@@ -59,16 +60,24 @@ class CouchClient:
         """Close the underlying HTTP client."""
         await self._client.aclose()
 
-    @transient_retry
     async def changes(self, since: str | int = 0) -> Changes:
         """Fetch documents changed since ``since`` (``0`` for everything)."""
-        response = await self._client.get(
-            f"{self.base_url}/_changes",
-            params={"since": since, "include_docs": "true", "style": "main_only"},
-            auth=self._auth,
-        )
-        if response.is_error:
-            raise CouchError(response.status_code, response.text)
+
+        @transient_retry
+        async def send() -> httpx.Response:
+            response = await self._client.get(
+                f"{self.base_url}/_changes",
+                params={"since": since, "include_docs": "true", "style": "main_only"},
+                auth=self._auth,
+            )
+            if response.is_error:
+                raise CouchError(response.status_code, response.text)
+            return response
+
+        try:
+            response = await send()
+        except httpx.TransportError as exc:
+            raise MarvinError(f"cannot reach {self.base_url}: {exc}") from exc
         payload = response.json()
         result = Changes(last_seq=str(payload["last_seq"]))
         for row in payload["results"]:

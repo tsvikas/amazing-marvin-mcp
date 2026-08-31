@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING
 
+from .errors import MarvinError
 from .models import INBOX, ROOT, Category, JsonObj, Label, LabelGroup, Task
 
 if TYPE_CHECKING:
@@ -64,11 +65,11 @@ STRATEGY_NAMES = {
 }
 
 
-class NotFoundError(LookupError):
+class NotFoundError(MarvinError):
     """No item matches the given id or name."""
 
 
-class AmbiguousError(LookupError):
+class AmbiguousError(MarvinError):
     """More than one item matches the given name."""
 
 
