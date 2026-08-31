@@ -77,9 +77,9 @@ Not used yet. Worth adding for:
 
 ## Packaging
 
-- **httpx 1.0**: the CI prerelease job fails because `respx` still imports
-  `httpcore` (renamed `httpcore2` in httpx 1.0). Revisit when respx ships
-  support; until then that job is an allowed failure.
+- **httpx 1.0**: `respx` still imports `httpcore` (renamed `httpcore2` in
+  httpx 1.0), so the tests cannot run against the httpx 1.0 prereleases. The
+  CI job that tried was removed; revisit when respx ships support.
 
 - `uvx --from git+… amazing-marvin-mcp serve` one-liner; PyPI release once the
   tool set settles.

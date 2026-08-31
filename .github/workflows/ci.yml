@@ -166,54 +166,6 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}  # zizmor: ignore[secrets-outside-env]
 
 
-  test-pypy-and-prerelease:
-    strategy:
-      matrix:
-        include:
-          # test on prerelease
-          - resolution: prerelease
-            os: ubuntu-latest
-            python-version: '3.14'
-          - resolution: prerelease
-            os: ubuntu-latest
-            python-version: '3.15'
-      fail-fast: false
-    runs-on: ${{ matrix.os }}
-    name: test-${{ matrix.python-version }}-${{ matrix.resolution }}-${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache-suffix: ${{ matrix.resolution }}
-      - name: Install packages
-        id: install_packages
-        run: >-
-          uv sync
-          --exact
-          --all-extras
-          --no-default-groups
-          --group test
-          ${{ matrix.resolution == 'locked' && '--locked'
-              || matrix.resolution == 'lowest' && '--upgrade --resolution lowest-direct'
-              || matrix.resolution == 'highest' && '--upgrade --resolution highest'
-              || matrix.resolution == 'prerelease' && '--upgrade --resolution highest --prerelease allow'
-              || '--NON_RECOGNIZED_RESOLUTION'
-          }}
-        continue-on-error: true
-      - name: Stop job with warning if install fails
-        if: ${{ steps.install_packages.outcome == 'failure' }}
-        run: >-
-          echo "::warning::Stopping job due to installation failure on Python ${{ matrix.python-version }}"
-      - name: List packages
-        if: ${{ steps.install_packages.outcome == 'success' }}
-        run: uv pip list
-      - name: Run tests
-        if: ${{ steps.install_packages.outcome == 'success' }}
-        run: uv run --no-sync -- pytest --cov-branch --cov-report=xml --junitxml=junit.xml
-
   pylint:
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -257,13 +209,9 @@ jobs:
       - mypy
       - dependencies
       - test
-      - test-pypy-and-prerelease
       - pylint
     runs-on: ubuntu-latest
     steps:
       - uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
         with:
           jobs: ${{ toJSON(needs) }}
-          # Prerelease resolutions are an early warning, not a gate: e.g. respx
-          # does not support the httpx 1.0 prereleases yet.
-          allowed-failures: test-pypy-and-prerelease
