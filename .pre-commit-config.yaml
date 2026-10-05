@@ -16,7 +16,7 @@ repos:
   # Sync Python and pre-commit package versions
   # pyproject.toml -> uv.lock
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.12.5
+    rev: 0.12.23
     hooks:
       - id: uv-lock
   # uv.lock -> .pre-commit-config.yaml
@@ -112,7 +112,7 @@ repos:
     hooks:
       - id: codespell
   - repo: https://github.com/adhtruong/mirrors-typos
-    rev: v1.49.0
+    rev: v1.50.3
     hooks:
       - id: typos
   - repo: local
@@ -143,7 +143,7 @@ repos:
 
   # Python files
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.3
+    rev: v0.16.10
     hooks:
       - id: ruff-check
         alias: ruff-isort
@@ -175,7 +175,7 @@ repos:
 
   # pyproject.toml
   - repo: https://github.com/henryiii/validate-pyproject-schema-store
-    rev: 2026.08.15
+    rev: 2026.10.02
     hooks:
       - id: validate-pyproject
 
@@ -187,7 +187,7 @@ repos:
 
   # GitHub files
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.38.0
+    rev: 0.38.2
     hooks:
       - id: check-dependabot
       - id: check-github-actions
@@ -198,7 +198,7 @@ repos:
     hooks:
       - id: actionlint
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: v1.29.0
+    rev: v1.30.1
     hooks:
       - id: zizmor
 
@@ -208,7 +208,7 @@ repos:
     hooks:
       - id: shellcheck
   - repo: https://github.com/scop/pre-commit-shfmt
-    rev: v3.13.1-1
+    rev: v3.14.1-1
     hooks:
       - id: shfmt
   - repo: https://github.com/hugoh/pre-commit-fish
