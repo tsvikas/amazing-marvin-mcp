@@ -7,7 +7,14 @@ import respx
 
 from amazing_marvin_mcp import __version__, cli
 from amazing_marvin_mcp.api import BASE_URL
-from amazing_marvin_mcp.cli import EX_SOFTWARE, EX_UNAVAILABLE, EX_USAGE, app, main
+from amazing_marvin_mcp.cli import (
+    EX_NOINPUT,
+    EX_NOPERM,
+    EX_SOFTWARE,
+    EX_UNAVAILABLE,
+    app,
+    main,
+)
 from amazing_marvin_mcp.settings import Settings
 
 COUCH = "https://db.example.com"
@@ -87,7 +94,35 @@ def test_init_workflow(
 def test_main_usage_error() -> None:
     with pytest.raises(SystemExit) as exc_info:
         main(["--not-an-option"])
-    assert exc_info.value.code == EX_USAGE
+    # Cyclopts >=5 exits 2 on invalid usage, as argparse, click and clap do.
+    # sysexits(3) would say 64, but 2 is the far wider convention.
+    assert exc_info.value.code == 2
+
+
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (FileNotFoundError("missing.txt"), EX_NOINPUT),
+        (PermissionError("locked.txt"), EX_NOPERM),
+        (ConnectionError("down"), EX_UNAVAILABLE),
+        # a subclass lands on its parent's code
+        (ConnectionRefusedError("refused"), EX_UNAVAILABLE),
+    ],
+)
+def test_main_reported_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    error: Exception,
+    code: int,
+) -> None:
+    def explode(*_args: object, **_kwargs: object) -> None:
+        raise error
+
+    monkeypatch.setattr(cli, "app", explode)
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == code
+    assert capsys.readouterr().err == f"error: {error}\n"
 
 
 def test_main_unhandled_error(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import NoReturn
 
-from cyclopts import App, CycloptsError
+from cyclopts import App
 
 from .server import State, build_state, create_server
 from .settings import Settings
@@ -143,7 +143,6 @@ def init_workflow(*, split: bool = False, force: bool = False) -> int:
 
 
 # --- Entry point ----------------------------------------------------------------------
-EX_USAGE = 2
 EX_NOINPUT = 66
 EX_UNAVAILABLE = 69
 EX_SOFTWARE = 70
@@ -163,10 +162,9 @@ def main(tokens: Sequence[str] | None = None) -> None:
         tokens: The command line to parse. Defaults to `sys.argv[1:]`.
     """
     try:
-        # Cyclopts itself calls `sys.exit` with a command's int return value.
-        app(tokens, exit_on_error=False)
-    except CycloptsError:
-        sys.exit(EX_USAGE)
+        # Cyclopts itself calls `sys.exit` with a command's int return value,
+        # and exits 2 on invalid usage.
+        app(tokens)
     except FileNotFoundError as exc:
         _fail(exc, EX_NOINPUT)
     except PermissionError as exc:
