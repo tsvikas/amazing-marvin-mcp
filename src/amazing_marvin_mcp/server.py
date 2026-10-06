@@ -332,14 +332,22 @@ def _task_list(mirror: Mirror, tasks: list[Task], limit: int) -> TaskList:
     )
 
 
-def structure(mirror: Mirror) -> Structure:
-    """Category/project tree with open-task counts, labels by group, strategies."""
+def structure(mirror: Mirror, *, include_done: bool = False) -> Structure:
+    """Category/project tree with open-task counts, labels by group, strategies.
+
+    Done projects, and everything nested in them, are left out unless
+    ``include_done``: a long-lived account has far more of them than open ones.
+    """
     open_counts: dict[str, int] = {}
     for task in mirror.tasks():
         if not task.done:
             open_counts[task.parent_id] = open_counts.get(task.parent_id, 0) + 1
     children: dict[str, list[Category]] = {}
+    hidden = 0
     for cat in mirror.categories():
+        if cat.is_project and cat.done and not include_done:
+            hidden += 1
+            continue
         children.setdefault(cat.parent_id, []).append(cat)
 
     def node(cat: Category) -> TreeNode:
@@ -365,6 +373,7 @@ def structure(mirror: Mirror) -> Structure:
     return Structure(
         inbox_open_tasks=open_counts.get(INBOX, 0),
         tree=[node(c) for c in roots],
+        done_projects_hidden=hidden,
         labels=[
             LabelGroupOut(
                 group=groups[gid].title if gid in groups else None,
@@ -460,12 +469,17 @@ def create_server(
         return SyncResult(changed_documents=changed, documents=len(mirror.docs))
 
     @mcp.tool()
-    async def get_structure() -> Structure:
+    async def get_structure(
+        include_done: Annotated[
+            bool, Field(description="also list done projects (can be many)")
+        ] = False,
+    ) -> Structure:
         """Category/project tree with ids and open-task counts, labels by group, strategies in use.
 
         Call this once at the start of a session; it is how you map names to ids.
+        Done projects are left out unless `include_done`.
         """
-        return structure(await fresh())
+        return structure(await fresh(), include_done=include_done)
 
     @mcp.tool()
     async def list_inbox(limit: int = 50) -> TaskList:

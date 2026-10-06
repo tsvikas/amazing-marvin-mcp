@@ -199,6 +199,9 @@ class Structure(Out):
 
     inbox_open_tasks: int
     tree: list[TreeNode]
+    done_projects_hidden: Annotated[
+        int, Field(description="done projects left out; pass include_done to list them")
+    ] = 0
     labels: list[LabelGroupOut]
     enabled_strategies: Annotated[
         list[str], Field(description="names from Marvin's Strategies screen")

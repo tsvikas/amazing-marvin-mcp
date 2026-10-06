@@ -168,6 +168,25 @@ async def test_structure(server: MCPServer[None]) -> None:
 
 
 @pytest.mark.anyio
+async def test_structure_hides_done_projects_by_default(
+    server: MCPServer[None],
+) -> None:
+    def work_children(out: dict[str, object]) -> list[str]:
+        tree = out["tree"]
+        assert isinstance(tree, list)
+        work = next(n for n in tree if n["title"] == "Work")
+        return [c["title"] for c in work["children"]]
+
+    out = await call(server, "get_structure")
+    assert work_children(out) == ["Client A"]
+    assert out["done_projects_hidden"] == 1
+
+    out = await call(server, "get_structure", include_done=True)
+    assert set(work_children(out)) == {"Client A", "Old"}
+    assert out["done_projects_hidden"] == 0
+
+
+@pytest.mark.anyio
 async def test_search_resolves_names(server: MCPServer[None]) -> None:
     out = await call(server, "search_tasks", parent="Client A", labels=["short-win"])
     assert [t["title"] for t in out["tasks"]] == ["Deploy site"]
