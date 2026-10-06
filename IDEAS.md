@@ -17,9 +17,10 @@ edits from other devices during a session are normal (hence the fresh read
 before a read-modify-write), and the device-local Trash can be emptied from
 any of them. This checkout runs in WSL: the Windows desktop app's automatic
 backups are reachable under `/mnt/c/Users/<user>/OneDrive/Documents/AmazingMarvinBackups`
-(about 0.7 MB per compressed backup on 2026-10-06, so the first sync should
-be small). The backups there had a gap from 2026-08-23 to 2026-10-01, which
-is exactly what the backup-age check is for.
+(0.7 MB compressed on 2026-10-01, 1.7 MB / 11 MB of JSON on 2026-10-06 after
+the app caught up on five weeks of sync). The backups there had a gap from
+2026-08-23 to 2026-10-01 because the computer was off: the app only backs
+up while running, which is exactly what the backup-age check is for.
 
 ### Stage 0: read-only trial on the real account (no code needed)
 
@@ -30,19 +31,56 @@ is exactly what the backup-age check is for.
 - Find the profile setting that lists the Backburner labels (look for
   `backburner` among the `ProfileItems` ids in the real mirror).
 
+Measured on the real account, 2026-10-06 (read-only, sync credentials only):
+
+- First sync: 10.8 s, 10,479 documents (16,039 changes), 16 MB mirror file.
+- 7,710 tasks (1,775 open, 5,935 done), 137 open in the Inbox, 138
+  categories, 325 projects (270 of them done), 41 labels.
+- **`get_structure` is too big**: 50,640 characters (about 12,700 tokens),
+  over Claude Code's 50,000-character limit for an inline tool result. It
+  lists the 270 done projects; hide done projects by default.
+- Backburner on open tasks: 136 by manual flag, 4 by future start date, 16
+  with `dependsOn`; 18 projects/categories carry the flag (inheritance).
+  The Backburner labels are in `strategySettings.backburner.backburnerLabels`.
+- The `sequentialProjects` and `nextSteps` strategies are on: check whether
+  "only the first task of a sequential project is actionable" belongs in
+  the "active" filter.
+- `STRATEGY_NAMES` covers a minority of the 68 enabled strategy keys; the
+  rest show as raw keys.
+- Still to check by eye in a session: importance levels (31 tasks at 3, 6
+  at 2, 15 at 1) against the app.
+- Data oddities to understand: 6 tasks in the synced database carry
+  `deletedAt` (support says only a device's Trash copy should), and 8
+  documents have no `db`.
+
+Still to do in stage 0: register the server (`claude mcp add --scope user marvin -- amazing-marvin-mcp serve`), use the read tools in a session, and
+note what reads wrong. Then Claude Desktop on Windows, which has to launch
+the WSL install through `wsl.exe` (untested).
+
+Things to keep in mind once writes are on: task titles and notes go into the
+model's context, and notes are untrusted text (email-to-Marvin, pasted web
+content) that could try to steer an assistant holding the full-access
+token. In Claude Code, allow the read tools and leave the write tools on
+"ask" at first; the `anthropic/requiresUserInteraction` tool annotation can
+force a prompt for the destructive ones.
+
 ### Stage 1: before any write on the real account
 
 - **Enforce the read-only database boundary.** `CouchClient` only ever sends
   `GET _changes`; make that impossible to break (reject non-GET in the
   client, plus a test). The sync credentials can write, so the guarantee has
   to be ours.
-- **Request budget.** Marvin's limits ("1 item per second", "1 query each 3
-  seconds", "1440 queries per day") apply to the REST API *and* direct
-  database access, so mirror polls count. Today the REST limiter and the
-  poll timer are separate and nothing counts the day. Wanted: one shared
-  limiter, a persisted rolling-24h counter shown by `check` and in
-  `get_structure`'s mirror info, a warning threshold and a hard stop below
-  1440\.
+- **Request budget.** Every request is a query, reads and writes alike, in
+  one budget shared by the REST API and the database, so mirror polls count:
+  at most 1 per 3 seconds, and about 1 per minute on average (1440 a day is
+  a guideline; Marvin counts nothing per day). Today the REST limiter and
+  the poll timer are separate and nothing counts the day. Wanted: one shared
+  limiter and a persisted rolling-24h counter shown by `check` and in
+  `get_structure`'s mirror info, with a warning as it nears 1440.
+- **Back off properly on 429.** A burst gets a 429 ("Too many AM API
+  requests") and a block of about a minute. The retry policy waits 2 to 20
+  seconds, so its retries land inside the block. On 429, from the API or the
+  database, wait over a minute and slow down afterwards.
 - **Poll less.** A read needs a fresh mirror at session start, on
   `sync_marvin`, before a write, and when more than X minutes have passed
   since the last poll (`MARVIN_MIRROR_MAX_AGE`, today 60 s; pick a larger
@@ -71,8 +109,12 @@ is exactly what the backup-age check is for.
   ("To delete", name from the workflow): a `discard` tool moves the item
   there and clears its dates, the "active" filter hides that category, and
   the user empties it in the app, which goes through the app's own Trash.
-  Open: tasks have documented `deletedAt`/`restoredAt` fields; test on the
-  throwaway account what setting `deletedAt` through the API does in the app.
+  Never set `deletedAt` on a live task: it exists only on the device's Trash
+  copy, and a live task with it stays in the lists while some features
+  ignore it. Alternative Marvin support suggests: keep a local copy of the
+  document (the journal does), then `/api/doc/delete`, with undo by
+  re-creating it. That would be a delete tool, which the working rules
+  forbid today; decide whether the journal changes that.
 - **"Active" filter.** `backburner=False` only tests the manual flag. Marvin
   also backburners by label (Backburner labels in the strategy settings),
   unfinished dependency (`dependsOn`), future start date and inheritance from
@@ -109,12 +151,28 @@ is exactly what the backup-age check is for.
 - **`show-instructions` command** that prints exactly what the model sees
   (instructions and tool descriptions with lengths), for review.
 
-### Open questions for Marvin support
+### Answers from Marvin support (2026-10-06)
 
-Asked 2026-10-06 (draft email): do limits apply to the desktop local API
-server; which endpoints it serves now that the list is gone from the docs;
-whether writes count as "queries"; whether the API can trash instead of
-delete; whether a backup can be triggered or verified by API.
+Marvin added these to the help-center API articles too.
+
+- **Limits**: every request counts as a query, including `/api/doc/update`
+  and `/api/markDone`. "1 item per second" only caps bulk creation and is
+  not a separate budget. Nothing is counted per day; 1440 means about one
+  request a minute on average, shared by the public API and the database.
+  One `_changes?since=` request is one query whatever it returns. Usage
+  can't be inspected. A burst gets a 429 and a block of about a minute.
+- **Desktop local API server**: no rate limits; still needs the API token.
+  Serves `/api/test`, `/api/addTask`, `/api/addProject`, `/api/doc` (GET
+  only), `/api/list?filter=…` (`done=true` for completed items),
+  `/api/todayItems`, `/api/dueItems`, `/api/categories`, `/api/children`,
+  `/api/labels`, `/api/trackedItem`, `/api/me`, `/api/kudos`. Does not
+  serve `/api/doc/update`, `/api/markDone` or `/api/doc/delete`.
+- **Trash**: no supported way to reach it from the API (see "Removing
+  items" above).
+- **Backups**: the API can't trigger or report one; checking the folder is
+  right. Files are `AmazingMarvinBackup_YYYY-MM-DD-HH-MM.json[.lzma]`. The
+  desktop app backs up only while running and skips a turn while syncing or
+  in active use; failures show under ☰ → Account → Backups.
 
 ## Tools and data
 
@@ -152,7 +210,10 @@ Not used yet. Worth adding for:
   exactly as in the app, instead of us reimplementing the filter syntax.
 - **Users with cloud sync disabled**: the mirror can't exist; local `list`
   could be the read backend instead.
-- Writes bypass the internet and presumably the cloud rate limits (unverified).
+- No rate limits (confirmed by support), but it cannot edit: no
+  `/api/doc/update` or `/api/markDone`, so it only helps reads and creation.
+  `GET /api/doc` there could serve the fresh read before a read-modify-write
+  at no budget cost.
 - Limits: the desktop app must be running; `done` items only go back 6 weeks
   unless the app is in archive mode; endpoint set is smaller than the cloud's.
 
@@ -190,6 +251,19 @@ Not used yet. Worth adding for:
 
 ## Packaging
 
+- **Name collision**: `github.com/bgheneti/Amazing-Marvin-MCP` is a different
+  project with the same distribution name and the same `amazing-marvin-mcp`
+  command (v1.0.1, FastMCP). Installing one replaces the other, and it has
+  no `check` command, so a wrong install just starts its server. Decide on
+  a distinct name or command before any PyPI release; meanwhile `check`
+  could print the package origin, and the README should say how to tell.
+
+- **Clients**: Claude apps on Android and the web only reach remote HTTP
+  servers; this server is stdio-only. Supporting them means hosting it,
+  with the credentials and mirror on that host.
+
+- **README**: describe the read-only-first setup (sync credentials only).
+
 - **httpx 1.0**: `respx` still imports `httpcore` (renamed `httpcore2` in
   httpx 1.0), so the tests cannot run against the httpx 1.0 prereleases. The
   CI job that tried was removed; revisit when respx ships support.
@@ -219,3 +293,19 @@ Not used yet. Worth adding for:
 - Is `isStarred` 1/2/3 ↔ P3/P2/P1 right in the current app, or did the
   Importance Levels rework change the encoding? Verify on a task starred in
   the UI.
+
+## Repo chores
+
+Noted in the 2026-10-05 review, none done yet.
+
+- `CHANGELOG.md` is still the template stub; nothing recorded for #2, #3 or
+  the dependency and template updates.
+- The Discussions badge in the README and the link in `CONTRIBUTING.md` 404:
+  Discussions is disabled on the repo. Enable it or remove both.
+- `pip-audit` runs only in PR/push CI, not in the weekly scheduled run, so a
+  new advisory stays invisible until the next push.
+- `docs/index.md` is a one-line stub and the mkdocs setup is unused (no
+  Pages, no RTD); it is also what pulls in `requests`/`urllib3`.
+- GitHub was down on 2026-10-06: CI never ran for `828e8fa` (template
+  v0.31.0) or later commits, and Dependabot had not rebased PR #4. Check
+  both.
