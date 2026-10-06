@@ -93,6 +93,12 @@ def test_search_inbox(mirror: Mirror) -> None:
     assert titles(found) == {"Call dentist", "Think about vacation"}
 
 
+def test_hash_inbox_parent_reads_as_inbox() -> None:
+    task = Task.model_validate({"_id": "t", "title": "Clipped", "parentId": "#Inbox"})
+    assert task.parent_id == INBOX
+    assert task.in_inbox
+
+
 def test_search_parent_with_descendants(mirror: Mirror) -> None:
     assert titles(mirror.search(TaskFilter(parent_id="work"))) == {
         "Fix header CSS",

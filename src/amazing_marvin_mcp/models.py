@@ -8,6 +8,8 @@ of breaking parsing, and are preserved when a document is echoed back.
 Conventions worth remembering (all from the wiki):
 
 * ``parentId == "unassigned"`` is the Inbox, ``"root"`` is the top level.
+  Some capture paths write ``"#Inbox"`` instead; the app shows those in the Inbox
+  and rewrites them when it next opens it, so they are read as the Inbox too.
 * UI names for the dates: ``day`` = **Do date** (the day you plan to do it,
   "scheduled"); ``dueDate`` = **Due date** (hard, external deadline);
   ``endDate`` = **End date** (self-imposed target, also set by Planning Ahead);
@@ -25,9 +27,10 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 INBOX = "unassigned"
+INBOX_ALIASES = frozenset({"#Inbox"})
 ROOT = "root"
 MS_PER_MINUTE = 60_000
 
@@ -89,6 +92,11 @@ class _Item(_Doc):
     backburner: bool = False
     rank: float = 0
     recurring: bool = False
+
+    @field_validator("parent_id", mode="before")
+    @classmethod
+    def _inbox_alias(cls, value: object) -> object:
+        return INBOX if value in INBOX_ALIASES else value
 
     @property
     def in_inbox(self) -> bool:
