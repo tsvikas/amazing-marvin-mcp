@@ -64,6 +64,24 @@ token. In Claude Code, allow the read tools and leave the write tools on
 "ask" at first; the `anthropic/requiresUserInteraction` tool annotation can
 force a prompt for the destructive ones.
 
+Found in the first real session, 2026-10-07:
+
+- **Importance encoding confirmed** against the app: `isStarred` 3 = P1
+  (red, three stars), 2 = P2 (orange), 1 = P3 (yellow, one star).
+- **Project importance is invisible.** Projects store it as `priority`
+  (`low`/`mid`/`high` = 1/2/3 stars in the app), not `isStarred`. Summaries
+  show no `importance` for a project and `search_tasks(important=True)`
+  skips them. Map `priority` onto `importance` in both directions.
+- **`search_tasks` does not search projects** (or events, or subtask
+  titles): a project found by name needed a read of the mirror file.
+  Include projects, and say what is not searched in the description.
+- **Reversed Hebrew in a query.** A session searched for a name spelled
+  backwards and got 2 wrong hits instead of 31 (8 open). The search is
+  correct; the prompt mixed one line typed in logical order with lines
+  pasted in visual (reversed) order, and the model "fixed" the wrong one.
+  Cheap guard: when a query contains right-to-left text, also count matches
+  for its reverse and mention it if that finds more.
+
 ### Stage 1: before any write on the real account
 
 - **Enforce the read-only database boundary.** `CouchClient` only ever sends
