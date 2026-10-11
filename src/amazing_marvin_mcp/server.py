@@ -53,7 +53,7 @@ from .outputs import (
     TreeNode,
     Updated,
 )
-from .query import Branch, Kind, Lens, field_help, parse_day
+from .query import STARS_PRIORITY, Branch, Kind, Lens, field_help, parse_day
 from .query import search as run_search
 from .query import tree as build_tree
 from .settings import Settings
@@ -276,7 +276,17 @@ def project_detail(lens: Lens, cat: Category) -> ItemDetail:
     )
 
 
-def _task_list(lens: Lens, tasks: list[Task], limit: int) -> TaskList:
+def _task_list(
+    lens: Lens, tasks: list[Task], limit: int, *, include_backburner: bool
+) -> TaskList:
+    """Page ``tasks``, without those that are themselves on the Backburner.
+
+    Only an item's own causes count here, not its containers': the caller asked
+    for this container, so what is above it should not empty the list.
+    """
+    everything = len(tasks)
+    if not include_backburner:
+        tasks = [t for t in tasks if not lens.own_reasons(t)]
     truncated = (
         f"showing {limit} of {len(tasks)}; narrow the filter or raise limit"
         if len(tasks) > limit
@@ -286,6 +296,7 @@ def _task_list(lens: Lens, tasks: list[Task], limit: int) -> TaskList:
         count=len(tasks),
         tasks=[summary(lens, t) for t in tasks[:limit]],
         truncated=truncated,
+        backburner_hidden=everything - len(tasks),
     )
 
 
@@ -515,33 +526,55 @@ def create_server(
         return profile(Lens(await fresh()))
 
     @mcp.tool()
-    async def list_inbox(limit: int = 50) -> TaskList:
+    async def list_inbox(
+        limit: int = 50,
+        include_backburner: Annotated[
+            bool, Field(description="also tasks on the Backburner")
+        ] = False,
+    ) -> TaskList:
         """Open tasks in the Inbox (not filed in any category/project), oldest first."""
         m = await fresh()
         tasks = m.search(TaskFilter(parent_id=INBOX, include_descendants=False))
         tasks.sort(key=lambda t: t.created_at or 0)
-        return _task_list(Lens(m), tasks, limit)
+        return _task_list(Lens(m), tasks, limit, include_backburner=include_backburner)
 
     @mcp.tool()
-    async def list_today(day: str = "today") -> DayView:
+    async def list_today(
+        day: str = "today",
+        include_backburner: Annotated[
+            bool, Field(description="also items on the Backburner")
+        ] = True,
+    ) -> DayView:
         """What's on for a day: do date that day, do date earlier but not done, due by then.
+
+        Items on the Backburner are listed too, as a date on them is a decision
+        to deal with them; include_backburner=false leaves them out.
 
         Args:
             day: YYYY-MM-DD or today/tomorrow/yesterday.
+            include_backburner: false to leave Backburner items out.
         """
         m = await fresh()
         lens = Lens(m)
         d = parse_day(day)
+        hidden = 0
+
+        def rows(tasks: list[Task]) -> list[ItemSummary]:
+            nonlocal hidden
+            kept = [
+                t for t in tasks if include_backburner or not lens.backburner_reasons(t)
+            ]
+            hidden += len(tasks) - len(kept)
+            return [summary(lens, t) for t in kept]
+
         return DayView(
             date=d.isoformat(),
-            scheduled=[
-                summary(lens, t) for t in m.search(TaskFilter(day_from=d, day_to=d))
-            ],
-            scheduled_earlier_not_done=[
-                summary(lens, t)
-                for t in m.search(TaskFilter(day_to=d - timedelta(days=1)))
-            ],
-            due_by_then=[summary(lens, t) for t in m.search(TaskFilter(due_by=d))],
+            scheduled=rows(m.search(TaskFilter(day_from=d, day_to=d))),
+            scheduled_earlier_not_done=rows(
+                m.search(TaskFilter(day_to=d - timedelta(days=1)))
+            ),
+            due_by_then=rows(m.search(TaskFilter(due_by=d))),
+            backburner_hidden=hidden,
         )
 
     @mcp.tool(description=SEARCH_DOC)
@@ -637,13 +670,26 @@ def create_server(
         return task_detail(lens, m.task(task_id))
 
     @mcp.tool()
-    async def list_children(parent: str, limit: int = 100) -> Children:
-        """Open tasks and sub-projects directly inside a project/category (by id or name)."""
+    async def list_children(
+        parent: str,
+        limit: int = 100,
+        include_backburner: Annotated[
+            bool, Field(description="also children on the Backburner")
+        ] = False,
+    ) -> Children:
+        """Open tasks and sub-projects directly inside a project/category (by id or name).
+
+        Leaves out children that are themselves on the Backburner (flag, label,
+        start date, dependency, later step of a sequential project) unless
+        include_backburner; the parent being on the Backburner hides nothing.
+        """
         m = await fresh()
+        lens = Lens(m)
         pid = m.resolve_parent(parent)
-        subs = [c for c in m.categories() if c.parent_id == pid and not c.done]
+        every_sub = [c for c in m.categories() if c.parent_id == pid and not c.done]
+        subs = [c for c in every_sub if include_backburner or not lens.own_reasons(c)]
         tasks = m.search(TaskFilter(parent_id=pid, include_descendants=False))
-        page = _task_list(Lens(m), tasks, limit)
+        page = _task_list(lens, tasks, limit, include_backburner=include_backburner)
         return Children(
             parent=" > ".join(m.path(pid)),
             subprojects=[
@@ -653,6 +699,7 @@ def create_server(
             count=page.count,
             tasks=page.tasks,
             truncated=page.truncated,
+            backburner_hidden=page.backburner_hidden + len(every_sub) - len(subs),
         )
 
     # --- write tools ---------------------------------------------------------------
@@ -849,7 +896,13 @@ def create_server(
                 f"{old_text}\n\n{append_note}" if old_text else append_note
             )
         if importance is not None:
-            changes["isStarred"] = importance or False
+            if current.get("db") != "Categories":
+                changes["isStarred"] = importance or False
+            elif current.get("type") == "project":
+                # Projects keep their stars in `priority`, not `isStarred`.
+                changes["priority"] = STARS_PRIORITY.get(importance)
+            else:
+                raise MarvinError("a category has no importance; only its projects")
         if frog is not None:
             changes["isFrogged"] = frog or False
         if backburner is not None:

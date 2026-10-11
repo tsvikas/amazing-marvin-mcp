@@ -92,6 +92,20 @@ def test_backburner_reasons(lens: Lens, task_id: str, reasons: list[str]) -> Non
     assert lens.backburner_reasons(task) == reasons
 
 
+def test_sequential_project_keeps_only_its_first_step(mirror: Mirror) -> None:
+    mirror.docs["website"]["projectType"] = "sequential"
+    mirror.docs["t-web1"]["masterRank"] = 2
+    mirror.docs["t-web2"].update(masterRank=1, labelIds=[])
+    first, second = mirror.task("t-web2"), mirror.task("t-web1")
+    assert Lens(mirror, day=TODAY).backburner_reasons(second) == []  # strategy is off
+    mirror.docs["strategies.sequentialProjects"] = {"db": "ProfileItems", "val": True}
+    lens = Lens(mirror, day=TODAY)
+    assert lens.backburner_reasons(first) == []
+    assert lens.backburner_reasons(second) == ["sequential"]
+    mirror.docs["t-web2"]["done"] = True
+    assert Lens(mirror, day=TODAY).backburner_reasons(second) == []
+
+
 def test_done_dependencies_do_not_block(mirror: Mirror) -> None:
     mirror.docs["t-web1"]["done"] = True
     assert not Lens(mirror, day=TODAY).has_dependency(mirror.task("t-blocked"))

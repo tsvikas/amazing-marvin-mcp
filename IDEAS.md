@@ -42,9 +42,8 @@ Measured on the real account, 2026-10-06 (read-only, sync credentials only):
 - Backburner on open tasks: 136 by manual flag, 4 by future start date, 16
   with `dependsOn`; 18 projects/categories carry the flag (inheritance).
   The Backburner labels are in `strategySettings.backburner.backburnerLabels`.
-- The `sequentialProjects` and `nextSteps` strategies are on: check whether
-  "only the first task of a sequential project is actionable" belongs in
-  the "active" filter.
+- The `sequentialProjects` and `nextSteps` strategies are on (sequential
+  projects are handled since 2026-10-12, see below).
 - `STRATEGY_NAMES` covers a minority of the 68 enabled strategy keys; the
   rest show as raw keys.
 - Still to check by eye in a session: importance levels (31 tasks at 3, 6
@@ -145,19 +144,24 @@ Found in the first real session, 2026-10-07:
 ### Read tools redesign (built 2026-10-11): what is left
 
 `get_structure(root, depth, …)`, `get_profile` and `search(text, where, …)`
-replaced the old tree, `search_tasks` and `list_due`; "active" is computed
-from every Backburner cause; projects show their importance. Left over:
+replaced the old tree, `search_tasks` and `list_due`; done and Backburner
+are two independent switches, and the Backburner is computed from every one
+of Marvin's causes; projects show their importance. Left over:
 
-- **Check "active" against the app.** On the real account 412 of 1,830 open
-  items are active; 1,242 are held back only because a container above them
-  is on the Backburner. Compare a few with what the app shows.
-- **Sequential projects** (`projectType == "sequential"`, 29 on the real
-  account): should tasks after the first open one count as not active?
-- **Setting importance on a project** still writes `isStarred`; it should
-  write `priority` (`low`/`mid`/`high`). A write field: needs the live check
-  on the throwaway account, including how to clear it.
-- **`list_inbox`, `list_today`, `list_children`** still show every open task,
-  not only active ones. Decide whether they follow the same default.
+- **Check the Backburner against the app.** On the real account 1,167 of the
+  1,247 open items held back only by a parent sit under `Ideas`, which
+  carries the flag. Compare a few of the rest with what the app shows.
+- **Sequential projects**: every open task after the first (by `masterRank`)
+  is on the Backburner with the cause `sequential`, as the help page says.
+  Not verified: the tie-break when two tasks share a `masterRank` (we use the
+  creation time), and sub-projects inside a sequential project (the app does
+  "nested searches" for the first step; we leave sub-projects alone, and the
+  real account has none).
+- **Importance of a project is written as `priority`** by `update_task`
+  (unit-tested). Still owed: the live check on the throwaway account, in
+  particular that `null` clears it, and the cassette re-record.
+  `create_project` still takes `priority` names where `update_task` takes
+  `importance` stars; make them the same.
 - **Week boundaries**: `week_end` assumes a Monday start; read Marvin's
   week-start setting.
 - **`find_similar(ids, limit)`**: batched nearest neighbours by shared words,

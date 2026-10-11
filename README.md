@@ -62,10 +62,10 @@ the REST API, which handles Marvin's conflict-resolution bookkeeping
 | `get_structure [root] [depth]`          | Categories and projects below a root, with ids and open-task counts              |
 | `get_profile`                           | Labels by group, Backburner labels, strategies in use, mirror state              |
 | `search [text] [where] …`               | Tasks and projects by words (ranked) and/or a filter expression                  |
-| `list_inbox`                            | Open inbox tasks, oldest first                                                   |
+| `list_inbox`                            | Open inbox tasks, oldest first (not those on the Backburner)                     |
 | `list_today [day]`                      | Do date that day, do date earlier but not done, due by then                      |
 | `get_task id`                           | Full detail of a task (note, subtasks, dates) or a project (its open children)   |
-| `list_children parent`                  | Direct tasks and sub-projects of a project/category                              |
+| `list_children parent`                  | Direct tasks and sub-projects of a project/category (not on the Backburner)      |
 | `create_task` / `create_project`        | Names for parent/labels are resolved for you                                     |
 | `create_category` / `create_label`      | New folder in the Master List; new label (in an existing or new group)           |
 | `update_subtasks id …`                  | Add, complete, reopen, rename, remove subtasks                                   |
@@ -87,8 +87,13 @@ Done and Backburner are two separate questions about an item, and `search` and
 `get_structure` have a switch for each (`include_done`, `include_backburner`),
 both off by default. An item is on the Backburner for any of Marvin's reasons:
 sent there by hand, a Backburner label, a future start date, an unfinished
-dependency, or a parent that is. A search result counts the matches each switch
-left out.
+dependency, a later step of a sequential project, or a parent that is. Every
+result counts what a switch left out.
+
+The lists have `include_backburner` too. It is off for `list_inbox` and
+`list_children`, where only the item's own reasons count: listing a container
+that is itself on the Backburner still shows what is in it. It is on for
+`list_today`, since a date on an item is a decision to deal with it.
 
 There is deliberately no delete tool: Marvin's trash is client-side, so API
 deletes are unrecoverable.

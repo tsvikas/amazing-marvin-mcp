@@ -292,7 +292,47 @@ async def test_list_children(server: MCPServer[None]) -> None:
     assert [c["title"] for c in out["subprojects"]] == [
         "Client A"
     ]  # done project hidden
+    assert (out["tasks"], out["backburner_hidden"]) == ([], 1)
+    out = await call(server, "list_children", parent="work", include_backburner=True)
     assert [t["title"] for t in out["tasks"]] == ["Someday maybe"]
+    assert out["backburner_hidden"] == 0
+
+
+@pytest.mark.anyio
+async def test_lists_and_the_backburner(
+    server: MCPServer[None], mirror: Mirror
+) -> None:
+    mirror.docs["website"]["backburner"] = True
+    # A container on the Backburner does not empty its own listing…
+    out = await call(server, "list_children", parent="website")
+    assert len(out["tasks"]) == 2
+    assert out["tasks"][0]["why_backburner"] == ["parent"]
+    # …and the day keeps what has a date, unless asked to leave it out.
+    out = await call(server, "list_today", day="2026-08-21")
+    assert [t["title"] for t in out["scheduled"]] == ["Fix header CSS"]
+    out = await call(server, "list_today", day="2026-08-21", include_backburner=False)
+    assert (out["scheduled"], out["backburner_hidden"]) == ([], 2)
+    inbox = len((await call(server, "list_inbox"))["tasks"])
+    mirror.docs["t-inbox1"]["backburner"] = True
+    out = await call(server, "list_inbox")
+    assert (len(out["tasks"]), out["backburner_hidden"]) == (inbox - 1, 1)
+
+
+@pytest.mark.anyio
+async def test_importance_of_a_project_is_its_priority(
+    server: MCPServer[None], fake: FakeMarvin
+) -> None:
+    await call(server, "update_task", item_id="website", importance=3)
+    await call(server, "update_task", item_id="website", importance=0)
+    changes = [
+        {s["key"]: s["val"] for s in body["setters"]} for _, body in fake.requests
+    ]
+    assert changes[0]["priority"] == "high"
+    assert changes[1]["priority"] is None
+    assert not any("isStarred" in c for c in changes)
+    assert "a category has no importance" in await call_error(
+        server, "update_task", item_id="work", importance=1
+    )
 
 
 @pytest.mark.anyio

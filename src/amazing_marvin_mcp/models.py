@@ -143,6 +143,7 @@ class Task(_Item):
 
     db: Literal["Tasks"] = "Tasks"
     is_starred: bool | int = Field(default=False, alias="isStarred")
+    master_rank: float | None = Field(default=None, alias="masterRank")
     is_pinned: bool = Field(default=False, alias="isPinned")
     first_scheduled: str | None = Field(default=None, alias="firstScheduled")
     done_at: float | None = Field(default=None, alias="doneAt")

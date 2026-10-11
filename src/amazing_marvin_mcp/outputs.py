@@ -138,6 +138,9 @@ class TaskList(Out):
     count: Annotated[int, Field(description="matches before `limit` was applied")]
     tasks: list[ItemSummary]
     truncated: str | None = None
+    backburner_hidden: Annotated[
+        int, Field(description="left out; pass include_backburner to list them")
+    ] = 0
 
 
 class SearchHit(ItemSummary):
@@ -169,11 +172,9 @@ class SearchResult(Out):
     count: Annotated[int, Field(description="all matches, before limit/offset")]
     include_done: bool
     include_backburner: bool
-    done_hidden: Annotated[
-        int, Field(description="matches left out because they are done")
-    ] = 0
+    done_hidden: Annotated[int, Field(description="more matches with include_done")] = 0
     backburner_hidden: Annotated[
-        int, Field(description="matches left out because they are on the Backburner")
+        int, Field(description="more matches with include_backburner")
     ] = 0
     items: list[SearchHit | BriefHit]
     next_offset: Annotated[
@@ -188,6 +189,9 @@ class DayView(Out):
     scheduled: Annotated[list[ItemSummary], Field(description="do date is that day")]
     scheduled_earlier_not_done: list[ItemSummary]
     due_by_then: list[ItemSummary]
+    backburner_hidden: Annotated[
+        int, Field(description="left out; pass include_backburner to list them")
+    ] = 0
 
 
 class Children(TaskList):

@@ -14,6 +14,7 @@ functions beyond the ones given here, so it can only read the item in front of i
 from __future__ import annotations
 
 import ast
+import math
 import operator
 import re
 import shlex
@@ -36,6 +37,7 @@ Item = Task | Category
 Kind = Literal["task", "project", "category"]
 
 BACKBURNER_LABELS_DOC = "strategySettings.backburner.backburnerLabels"
+SEQUENTIAL_STRATEGY_DOC = "strategies.sequentialProjects"
 _PRIORITY_STARS = {"low": 1, "mid": 2, "high": 3}
 STARS_PRIORITY = {stars: name for name, stars in _PRIORITY_STARS.items()}
 SNIPPET_RADIUS = 40
@@ -91,6 +93,7 @@ class Lens:
         self.tasks = mirror.tasks()
         self.label_titles = {lb.id: lb.title for lb in mirror.labels()}
         self.backburner_label_ids = _ids(mirror.docs.get(BACKBURNER_LABELS_DOC))
+        self._later_steps = self._find_later_steps()
         self._inherited: dict[str, frozenset[str]] = {}
         self._under: dict[str, set[str]] = {}
 
@@ -120,8 +123,37 @@ class Lens:
                 return True
         return False
 
+    def _find_later_steps(self) -> set[str]:
+        """Open tasks of sequential projects that wait for the step before them."""
+        docs = self.mirror.docs
+        if not docs.get(SEQUENTIAL_STRATEGY_DOC, {}).get("val"):
+            return set()
+        steps: dict[str, list[Task]] = {}
+        for task in self.tasks:
+            if (
+                not task.done
+                and docs.get(task.parent_id, {}).get("projectType") == "sequential"
+            ):
+                steps.setdefault(task.parent_id, []).append(task)
+        later: set[str] = set()
+        for tasks in steps.values():
+            tasks.sort(
+                key=lambda t: (
+                    t.master_rank if t.master_rank is not None else math.inf,
+                    t.created_at or 0,
+                )
+            )
+            later.update(t.id for t in tasks[1:])
+        return later
+
+    def own_reasons(self, item: Item) -> list[str]:
+        """Backburner causes on the item itself, ignoring the containers above it."""
+        return sorted(self._own_reasons(item))
+
     def _own_reasons(self, item: Item) -> set[str]:
         reasons = set()
+        if item.id in self._later_steps:
+            reasons.add("sequential")
         if item.backburner:
             reasons.add("flag")
         if self.backburner_label_ids.intersection(item.label_ids):
@@ -156,7 +188,8 @@ class Lens:
 
         ``flag`` (sent to the Backburner by hand), ``label`` (a Backburner
         label), ``start_date`` (in the future), ``dependency`` (waits for an
-        open item), ``parent`` (a container above it is on the Backburner),
+        open item), ``sequential`` (not the first open step of a sequential
+        project), ``parent`` (a container above it is on the Backburner),
         ``parent_done`` (it sits in a finished project).
         """
         return sorted(self._own_reasons(item) | self._inherited_reasons(item.parent_id))
@@ -555,7 +588,7 @@ def search(  # noqa: PLR0913
     turns on when ``where`` itself asks about it (``done``, ``done_on``; or
     ``backburner``, ``has_dependency``, ``start_date``…), so ``where="done"``
     is not silently filtered down to nothing. The scope counts the matches
-    that each switch left out.
+    that each switch alone left out.
     """
     check = Where(where, lens) if where else None
     names = check.names if check else set()
@@ -572,8 +605,9 @@ def search(  # noqa: PLR0913
             continue
         done_out = item.done and not include_done
         backburner_out = not include_backburner and bool(lens.backburner_reasons(item))
-        scope.done_hidden += done_out
-        scope.backburner_hidden += backburner_out
+        # Each count is what turning on that one switch would add.
+        scope.done_hidden += done_out and not backburner_out
+        scope.backburner_hidden += backburner_out and not done_out
         if not (done_out or backburner_out):
             hits.append(hit)
     _order(lens, hits, sort, ranked=bool(words))
