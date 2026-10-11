@@ -169,7 +169,8 @@ async def test_round_trip(call: Call, state: State) -> None:
 
         structure = await call("get_structure")
         assert isinstance(structure["tree"], list)
-        assert "Task Labels" in structure["enabled_strategies"]
+        profile = await call("get_profile")
+        assert "Task Labels" in profile["enabled_strategies"]
 
         cat = await call("create_category", title=f"{PREFIX} category")
         created.append(cat["created"])
@@ -195,10 +196,12 @@ async def test_round_trip(call: Call, state: State) -> None:
         )
         created.append(task["created"])
 
-        found = await call("search_tasks", labels=[f"{PREFIX} label"], max_minutes=5)
-        assert [t["id"] for t in found["tasks"]] == [task["created"]]
-        assert found["tasks"][0]["end_date"] == "2030-01-05"
-        assert found["tasks"][0]["importance"] == 2
+        found = await call(
+            "search", where=f'"{PREFIX} label" in labels and estimate_min <= 5'
+        )
+        assert [t["id"] for t in found["items"]] == [task["created"]]
+        assert found["items"][0]["end_date"] == "2030-01-05"
+        assert found["items"][0]["importance"] == 2
 
         updated = await call(
             "update_task",

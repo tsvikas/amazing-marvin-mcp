@@ -17,7 +17,8 @@ Conventions worth remembering (all from the wiki):
   ``day == "unassigned"``/``None``/``""`` means unscheduled.
 * ``timeEstimate`` is in milliseconds.
 * ``isStarred`` = **Importance**: 3 = P1 (red), 2 = P2 (orange), 1 = P3 (yellow),
-  ``True`` = plain star in standard mode. ``isFrogged`` = **Eat the Frog**:
+  ``True`` = plain star in standard mode. Projects keep it in ``priority``
+  instead (``high``/``mid``/``low``). ``isFrogged`` = **Eat the Frog**:
   1 = frog, 2 = baby frog, 3 = monster frog.
 * Projects and categories share ``db == "Categories"``; ``type`` tells them apart.
 """
@@ -92,6 +93,7 @@ class _Item(_Doc):
     backburner: bool = False
     rank: float = 0
     recurring: bool = False
+    depends_on: dict[str, bool] = Field(default_factory=dict, alias="dependsOn")
 
     @field_validator("parent_id", mode="before")
     @classmethod
@@ -145,7 +147,6 @@ class Task(_Item):
     first_scheduled: str | None = Field(default=None, alias="firstScheduled")
     done_at: float | None = Field(default=None, alias="doneAt")
     subtasks: dict[str, Subtask] = Field(default_factory=dict)
-    depends_on: dict[str, bool] = Field(default_factory=dict, alias="dependsOn")
     daily_section: str | int | None = Field(default=None, alias="dailySection")
     duration: float | None = None
     times: list[float] = Field(default_factory=list)

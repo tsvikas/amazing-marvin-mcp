@@ -59,11 +59,11 @@ the REST API, which handles Marvin's conflict-resolution bookkeeping
 
 | Tool                                    | What it does                                                                     |
 | --------------------------------------- | -------------------------------------------------------------------------------- |
-| `get_structure`                         | Category/project tree with ids, labels by group, strategies in use               |
+| `get_structure [root] [depth]`          | Categories and projects below a root, with ids and open-task counts              |
+| `get_profile`                           | Labels by group, Backburner labels, strategies in use, mirror state              |
+| `search [text] [where] …`               | Tasks and projects by words (ranked) and/or a filter expression                  |
 | `list_inbox`                            | Open inbox tasks, oldest first                                                   |
 | `list_today [day]`                      | Do date that day, do date earlier but not done, due by then                      |
-| `list_due [by]`                         | Open tasks with a due date by a date (`week`, `month`, `YYYY-MM-DD`)             |
-| `search_tasks …`                        | Any mix of text, parent, labels, do-date window, due/end by, estimate, flags     |
 | `get_task id`                           | Full detail of a task (note, subtasks, dates) or a project (its open children)   |
 | `list_children parent`                  | Direct tasks and sub-projects of a project/category                              |
 | `create_task` / `create_project`        | Names for parent/labels are resolved for you                                     |
@@ -73,6 +73,22 @@ the REST API, which handles Marvin's conflict-resolution bookkeeping
 | `mark_done id`                          | Complete a task/project                                                          |
 | `sync_marvin`                           | Force a mirror refresh                                                           |
 | Prompts: `triage_inbox`, `daily_review` | Built from your workflow file                                                    |
+
+`search` takes words, a filter, or both. The filter is one expression over
+Marvin's own vocabulary, so a question maps onto it directly:
+
+```
+importance == 3 and do_date == tomorrow
+"errand" in labels and estimate_min <= 30 and under("Home")
+due_date <= today + days(7) or importance >= 2
+```
+
+Done and Backburner are two separate questions about an item, and `search` and
+`get_structure` have a switch for each (`include_done`, `include_backburner`),
+both off by default. An item is on the Backburner for any of Marvin's reasons:
+sent there by hand, a Backburner label, a future start date, an unfinished
+dependency, or a parent that is. A search result counts the matches each switch
+left out.
 
 There is deliberately no delete tool: Marvin's trash is client-side, so API
 deletes are unrecoverable.

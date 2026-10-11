@@ -68,13 +68,6 @@ Found in the first real session, 2026-10-07:
 
 - **Importance encoding confirmed** against the app: `isStarred` 3 = P1
   (red, three stars), 2 = P2 (orange), 1 = P3 (yellow, one star).
-- **Project importance is invisible.** Projects store it as `priority`
-  (`low`/`mid`/`high` = 1/2/3 stars in the app), not `isStarred`. Summaries
-  show no `importance` for a project and `search_tasks(important=True)`
-  skips them. Map `priority` onto `importance` in both directions.
-- **`search_tasks` does not search projects** (or events, or subtask
-  titles): a project found by name needed a read of the mirror file.
-  Include projects, and say what is not searched in the description.
 - **Reversed Hebrew in a query.** A session searched for a name spelled
   backwards and got 2 wrong hits instead of 31 (8 open). The search is
   correct; the prompt mixed one line typed in logical order with lines
@@ -133,11 +126,6 @@ Found in the first real session, 2026-10-07:
   document (the journal does), then `/api/doc/delete`, with undo by
   re-creating it. That would be a delete tool, which the working rules
   forbid today; decide whether the journal changes that.
-- **"Active" filter.** `backburner=False` only tests the manual flag. Marvin
-  also backburners by label (Backburner labels in the strategy settings),
-  unfinished dependency (`dependsOn`), future start date and inheritance from
-  a parent. Compute all five in the mirror and add `active_only` to
-  `search_tasks` and `get_structure`.
 - **Instructions are truncated.** Claude Code cuts server instructions and
   each tool description at 2,048 characters
   (`CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH` overrides). The generic text is
@@ -154,14 +142,35 @@ Found in the first real session, 2026-10-07:
   (`get_workflow(section="triage")`), so a session loads only what its task
   needs.
 
+### Read tools redesign (built 2026-10-11): what is left
+
+`get_structure(root, depth, …)`, `get_profile` and `search(text, where, …)`
+replaced the old tree, `search_tasks` and `list_due`; "active" is computed
+from every Backburner cause; projects show their importance. Left over:
+
+- **Check "active" against the app.** On the real account 412 of 1,830 open
+  items are active; 1,242 are held back only because a container above them
+  is on the Backburner. Compare a few with what the app shows.
+- **Sequential projects** (`projectType == "sequential"`, 29 on the real
+  account): should tasks after the first open one count as not active?
+- **Setting importance on a project** still writes `isStarred`; it should
+  write `priority` (`low`/`mid`/`high`). A write field: needs the live check
+  on the throwaway account, including how to clear it.
+- **`list_inbox`, `list_today`, `list_children`** still show every open task,
+  not only active ones. Decide whether they follow the same default.
+- **Week boundaries**: `week_end` assumes a Monday start; read Marvin's
+  week-start setting.
+- **`find_similar(ids, limit)`**: batched nearest neighbours by shared words,
+  weighting rare words more, for going over the whole Inbox in one call.
+  Decide first whether it fits the "no smart tools" rule.
+- **Reversed right-to-left queries**: when `text` is right-to-left, also count
+  matches for its reverse and say so if that finds more.
+- The `where` language is now an API: field renames break saved queries.
+
 ### Stage 2: makes triage good
 
 - **Workflow interview**: a prompt that reads the real structure and labels
   and writes the workflow files with the user (replaces the blank template).
-- **Any-word search**: `search_tasks(words=[…], match="any"|"all")` ranked by
-  number of matching words, for "find similar tasks". `search_tasks` is ours,
-  not Marvin's; the API has no search.
-- **Paging**: `offset` on the list tools (the 200 cap has no way past it).
 - **Merge and split** as documented recipes over existing tools (create,
   update, discard), journaled as one undoable group.
 - **Setup skill** for install, `check`, registration; the user still pastes
