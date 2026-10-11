@@ -100,6 +100,11 @@ Found in the first real session, 2026-10-07:
   and the profile documents behind `create_label` rewrite a whole value from
   a mirror up to 60 s old. Fetch the current document (`GET /api/doc`, or a
   forced poll) immediately before such a write.
+- **`update_task` must refuse a category id.** It takes any id, and only
+  `importance` is guarded: a Do date, estimate or Frog passed with a
+  category id is written to the category. Refuse, and point to
+  `update_category` (see "Tools and data"). Sends nothing new, so it needs
+  no live check.
 - **Write journal and undo.** Append every write to a local JSONL file
   (time, tool, document id, before/after of the changed fields). An
   `undo_last`/`undo(id)` tool replays the "before" values through
@@ -207,11 +212,19 @@ Marvin added these to the help-center API articles too.
 
 ## Tools and data
 
-- **Done history**: `search_tasks(done_from=, done_to=)` on `doneAt` for
-  "what did I finish this week". Data is in the mirror already.
-- **Remaining write fields**: daily/custom sections (`dailySection`,
-  `customSection`), dependencies (`dependsOn`), pinned tasks, snooze, `rank`
-  (ordering within a day/project), subtask reordering and estimates.
+- **`update_category`** (decided 2026-10-12): the line between write tools is
+  category vs. item, not task vs. project. Tasks and projects accept the same
+  fields, so they stay in `update_task`; a category accepts only title,
+  parent, note, color, icon and Backburner. On the real account the 138
+  categories use nothing else (14 notes, 2 Backburner flags; one has a label
+  and one a dependency). `create_category` can set a color that nothing can
+  change afterwards.
+- **Fields `update_task` lacks**: dependencies (`dependsOn`) on tasks and
+  projects; sequential/parallel (`projectType`), color and icon on projects.
+  Each is a new write field: unit test of the setters, then the live check.
+- **Remaining task-only write fields**: daily/custom sections
+  (`dailySection`, `customSection`), pinned tasks, snooze, `rank` (ordering
+  within a day/project), subtask reordering and estimates.
 - **Time tracking**: `start/stop_tracking`. Marvin expects the client to
   maintain `times`/`duration` on stop (`/api/track` only records the event),
   so this needs a small state machine, not a one-liner.
@@ -255,8 +268,6 @@ Not used yet. Worth adding for:
   the user's real (read-only) sync credentials.
 - **Prune** done tasks older than N days from the local mirror file; the
   `_changes` sequence keeps working.
-- **Cap `get_structure`** output (the tree has no `limit`); measure its token
-  cost on a real account.
 - **Push instead of poll**: Marvin webhooks could invalidate the mirror, but
   they need a public endpoint; probably not worth it for a local server.
 
@@ -320,10 +331,6 @@ Not used yet. Worth adding for:
   `todayItems` honours rollover/auto-schedule settings that the mirror-based
   `list_today` reimplements)? Current answer: no, but compare results on a
   real account.
-
-- Is `isStarred` 1/2/3 ↔ P3/P2/P1 right in the current app, or did the
-  Importance Levels rework change the encoding? Verify on a task starred in
-  the UI.
 
 ## Repo chores
 
