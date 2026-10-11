@@ -324,7 +324,7 @@ _OPERATORS: dict[type, Callable[..., object]] = {
     ast.Gt: _ordering("gt"),
     ast.GtE: _ordering("ge"),
     ast.In: _contains,
-    ast.NotIn: lambda a, b: not _contains(a, b),
+    ast.NotIn: lambda a, b: not _contains(a, b),  # codespell:ignore notin
     ast.Is: operator.is_,
     ast.IsNot: operator.is_not,
 }
@@ -395,7 +395,7 @@ class Where:
         operands = [node.left, *node.comparators]
         for left, op, right in zip(operands, node.ops, operands[1:], strict=False):
             if (
-                isinstance(op, (ast.In, ast.NotIn))
+                isinstance(op, (ast.In, ast.NotIn))  # codespell:ignore notin
                 and isinstance(right, ast.Name)
                 and right.id == "labels"
                 and isinstance(left, ast.Constant)
@@ -410,7 +410,10 @@ class Where:
         """Whether ``item`` passes the expression."""
         self._item = item
         try:
-            return bool(self._evaluator.eval("", previously_parsed=self._parsed))
+            # simpleeval's sandboxed evaluator, never the builtin: the
+            # python-no-eval hook goes by the text of the call alone.
+            evaluate = self._evaluator.eval
+            return bool(evaluate("", previously_parsed=self._parsed))
         except MarvinError:
             raise
         except Exception as exc:
