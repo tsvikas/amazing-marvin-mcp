@@ -54,7 +54,7 @@ def is_transient(exc: BaseException) -> bool:
 # Shared by the REST and CouchDB clients: 4 attempts, ~2 s -> ~20 s jittered waits.
 transient_retry = retry(
     retry=retry_if_exception(is_transient),
-    wait=wait_exponential_jitter(initial=2, max=20),
+    wait=wait_exponential_jitter(multiplier=2, max=20),
     stop=stop_after_attempt(4),
     reraise=True,
 )
