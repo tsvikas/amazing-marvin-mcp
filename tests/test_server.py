@@ -17,7 +17,8 @@ from pydantic import SecretStr
 from amazing_marvin_mcp.api import BASE_URL, MarvinAPI
 from amazing_marvin_mcp.errors import MarvinError
 from amazing_marvin_mcp.mirror import Mirror
-from amazing_marvin_mcp.server import State, create_server, parse_day
+from amazing_marvin_mcp.query import parse_day
+from amazing_marvin_mcp.server import State, create_server
 from amazing_marvin_mcp.settings import Settings
 
 Json = dict[str, Any]
@@ -136,11 +137,14 @@ async def test_tools_listed(server: MCPServer[None]) -> None:
     names = {t.name for t in await server.list_tools()}
     assert {
         "list_inbox",
-        "search_tasks",
+        "search",
+        "get_structure",
+        "get_profile",
         "get_task",
         "update_task",
         "create_task",
     } <= names
+    assert not {"search_tasks", "list_due"} & names
 
 
 @pytest.mark.anyio
@@ -156,15 +160,28 @@ async def test_list_inbox_oldest_first(server: MCPServer[None]) -> None:
 @pytest.mark.anyio
 async def test_structure(server: MCPServer[None]) -> None:
     out = await call(server, "get_structure")
-    assert out["inbox_open_tasks"] == 2
+    assert (out["root"], out["depth"], out["inbox_tasks"]) == ("Master List", 2, 2)
     work = next(n for n in out["tree"] if n["title"] == "Work")
-    website = work["children"][0]["children"][0]
-    assert website["title"] == "Website"
-    assert website["open_tasks"] == 2
-    groups = {g["group"]: [lb["title"] for lb in g["labels"]] for g in out["labels"]}
-    assert groups["Energy"] == ["high-energy", "low-energy"]
-    assert groups[None] == ["short-win"]
-    assert out["enabled_strategies"] == ["orbit", "Duration Estimates"]
+    (client,) = work["children"]
+    assert client["title"] == "Client A"
+    assert "children" not in client  # the third level is not listed at depth 2…
+    assert client["more_projects"] == 1  # …but announced
+    assert (work["tasks_below"], client["tasks_below"]) == (2, 2)
+    assert "tasks" not in work  # zero is omitted
+    assert out["done_projects_hidden"] == 1
+
+
+@pytest.mark.anyio
+async def test_structure_from_a_root(server: MCPServer[None]) -> None:
+    out = await call(server, "get_structure", root="Client A", depth=1)
+    assert out["root"] == "Work > Client A"
+    assert "inbox_tasks" not in out
+    (website,) = out["tree"]
+    assert (website["title"], website["type"], website["tasks"]) == (
+        "Website",
+        "project",
+        2,
+    )
 
 
 @pytest.mark.anyio
@@ -187,19 +204,67 @@ async def test_structure_hides_done_projects_by_default(
 
 
 @pytest.mark.anyio
-async def test_search_resolves_names(server: MCPServer[None]) -> None:
-    out = await call(server, "search_tasks", parent="Client A", labels=["short-win"])
-    assert [t["title"] for t in out["tasks"]] == ["Deploy site"]
-    assert out["tasks"][0]["labels"] == ["short-win", "low-energy"]
-    assert out["tasks"][0]["subtasks"] == "1/2"
-    out = await call(server, "search_tasks", max_minutes=10, labels=["@car"])
-    assert [t["title"] for t in out["tasks"]] == ["Buy wiper fluid"]
+async def test_structure_resource_is_the_default_tree(server: MCPServer[None]) -> None:
+    res = await server.read_resource("marvin://structure")
+    assert not isinstance(res, InputRequiredResult)
+    assert '"root": "Master List"' in str(next(iter(res)).content)
 
 
 @pytest.mark.anyio
-async def test_search_bad_label_is_error(server: MCPServer[None]) -> None:
-    assert "no label matching" in await call_error(
-        server, "search_tasks", labels=["nope"]
+async def test_profile(server: MCPServer[None]) -> None:
+    out = await call(server, "get_profile")
+    groups = {g["group"]: [lb["title"] for lb in g["labels"]] for g in out["labels"]}
+    assert groups["Energy"] == ["high-energy", "low-energy"]
+    assert groups[None] == ["short-win"]
+    assert out["enabled_strategies"] == ["orbit", "Duration Estimates"]
+    assert out["mirror"]["documents"] > 0
+    assert "backburner_labels" not in out or out["backburner_labels"] == []
+
+
+@pytest.mark.anyio
+async def test_search_where(server: MCPServer[None]) -> None:
+    out = await call(
+        server, "search", where='"short-win" in labels and under("Client A")'
+    )
+    assert (out["count"], out["include_done"]) == (1, False)
+    (item,) = out["items"]
+    assert item["title"] == "Deploy site"
+    assert item["labels"] == ["short-win", "low-energy"]
+    assert item["subtasks"] == "1/2"
+    out = await call(server, "search", where='estimate_min <= 10 and "car" in labels')
+    assert [i["title"] for i in out["items"]] == ["Buy wiper fluid"]
+
+
+@pytest.mark.anyio
+async def test_search_text_reports_the_match(server: MCPServer[None]) -> None:
+    out = await call(server, "search", text="bug report")
+    (item,) = out["items"]
+    assert (item["title"], item["matched_in"]) == ("Fix header CSS", ["note"])
+    assert item["snippet"] == "See the bug report. Second line."
+    out = await call(server, "search", text="someday", include_backburner=True)
+    (item,) = out["items"]
+    assert (item["backburner"], item["why_backburner"]) == (True, ["flag"])
+
+
+@pytest.mark.anyio
+async def test_search_pages_and_brief(server: MCPServer[None]) -> None:
+    first = await call(server, "search", sort="title", limit=2, brief=True)
+    assert first["count"] > 2
+    assert first["next_offset"] == 2
+    assert set(first["items"][0]) == {"id", "title", "type", "parent"}
+    second = await call(server, "search", sort="title", limit=2, offset=2)
+    assert second["items"][0]["id"] not in {i["id"] for i in first["items"]}
+    last = await call(server, "search", sort="title", limit=200)
+    assert "next_offset" not in last
+
+
+@pytest.mark.anyio
+async def test_search_bad_filter_is_error(server: MCPServer[None]) -> None:
+    assert "no label 'nope'" in await call_error(
+        server, "search", where='"nope" in labels'
+    )
+    assert "unknown name(s) ['priority']" in await call_error(
+        server, "search", where="priority == 3"
     )
 
 
@@ -209,12 +274,6 @@ async def test_list_today(server: MCPServer[None]) -> None:
     assert [t["title"] for t in out["scheduled"]] == ["Fix header CSS"]
     assert [t["title"] for t in out["scheduled_earlier_not_done"]] == ["Deploy site"]
     assert out["due_by_then"] == []
-
-
-@pytest.mark.anyio
-async def test_list_due(server: MCPServer[None]) -> None:
-    out = await call(server, "list_due", by="2026-08-31")
-    assert [t["title"] for t in out["tasks"]] == ["Fix header CSS", "Taxes"]
 
 
 @pytest.mark.anyio
@@ -233,7 +292,47 @@ async def test_list_children(server: MCPServer[None]) -> None:
     assert [c["title"] for c in out["subprojects"]] == [
         "Client A"
     ]  # done project hidden
+    assert (out["tasks"], out["backburner_hidden"]) == ([], 1)
+    out = await call(server, "list_children", parent="work", include_backburner=True)
     assert [t["title"] for t in out["tasks"]] == ["Someday maybe"]
+    assert out["backburner_hidden"] == 0
+
+
+@pytest.mark.anyio
+async def test_lists_and_the_backburner(
+    server: MCPServer[None], mirror: Mirror
+) -> None:
+    mirror.docs["website"]["backburner"] = True
+    # A container on the Backburner does not empty its own listing…
+    out = await call(server, "list_children", parent="website")
+    assert len(out["tasks"]) == 2
+    assert out["tasks"][0]["why_backburner"] == ["parent"]
+    # …and the day keeps what has a date, unless asked to leave it out.
+    out = await call(server, "list_today", day="2026-08-21")
+    assert [t["title"] for t in out["scheduled"]] == ["Fix header CSS"]
+    out = await call(server, "list_today", day="2026-08-21", include_backburner=False)
+    assert (out["scheduled"], out["backburner_hidden"]) == ([], 2)
+    inbox = len((await call(server, "list_inbox"))["tasks"])
+    mirror.docs["t-inbox1"]["backburner"] = True
+    out = await call(server, "list_inbox")
+    assert (len(out["tasks"]), out["backburner_hidden"]) == (inbox - 1, 1)
+
+
+@pytest.mark.anyio
+async def test_importance_of_a_project_is_its_priority(
+    server: MCPServer[None], fake: FakeMarvin
+) -> None:
+    await call(server, "update_task", item_id="website", importance=3)
+    await call(server, "update_task", item_id="website", importance=0)
+    changes = [
+        {s["key"]: s["val"] for s in body["setters"]} for _, body in fake.requests
+    ]
+    assert changes[0]["priority"] == "high"
+    assert changes[1]["priority"] is None
+    assert not any("isStarred" in c for c in changes)
+    assert "a category has no importance" in await call_error(
+        server, "update_task", item_id="work", importance=1
+    )
 
 
 @pytest.mark.anyio

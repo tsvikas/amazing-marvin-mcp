@@ -12,8 +12,8 @@ from __future__ import annotations
 import contextlib
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Annotated
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from mcp.server import MCPServer
 from pydantic import Field, SecretStr
@@ -30,19 +30,22 @@ from .mirror import (
     TaskFilter,
     new_id,
 )
-from .models import INBOX, MS_PER_MINUTE, Category, JsonObj, Task
+from .models import INBOX, MS_PER_MINUTE, ROOT, Category, JsonObj, Task
 from .outputs import (
+    BriefHit,
     Children,
     Created,
     DayView,
     Done,
-    DueList,
     ItemDetail,
     ItemRef,
     ItemSummary,
     LabelGroupOut,
     LabelOut,
     MirrorInfo,
+    Profile,
+    SearchHit,
+    SearchResult,
     Structure,
     SubtaskOut,
     SyncResult,
@@ -50,6 +53,9 @@ from .outputs import (
     TreeNode,
     Updated,
 )
+from .query import STARS_PRIORITY, Branch, Kind, Lens, field_help, parse_day
+from .query import search as run_search
+from .query import tree as build_tree
 from .settings import Settings
 from .workflow import Workflow
 
@@ -70,7 +76,7 @@ Marvin vocabulary (the tools use the same names as Marvin's UI):
 - Inbox = items not yet filed anywhere (parent "unassigned"). Everything else
   lives in a tree of categories (folders, arbitrarily nested) and projects
   (nested anywhere; hold tasks and sub-projects). `get_structure` shows the
-  tree with ids. The Master List is that whole tree.
+  tree with ids, a few levels at a time. The Master List is that whole tree.
 - Dates are four different things:
   * Do date (`do_date`) = the day the user plans to *do* it; "scheduled".
   * Due date (`due_date`) = a hard, external deadline. Rare and serious.
@@ -81,15 +87,17 @@ Marvin vocabulary (the tools use the same names as Marvin's UI):
   want this done by" usually means end date or planned week.
 - Duration estimate = `estimate_min` (minutes). Importance = stars:
   3 = P1 (red), 2 = P2 (orange), 1 = P3 (yellow). Frog = Eat-the-Frog
-  dreaded task, 1-3. Backburner = deliberately parked / not now.
-- Labels are free-form and user-defined; their meaning is in the workflow
-  section below, not in Marvin. Label groups can be exclusive (one per group).
+  dreaded task, 1-3. Backburner = not now: parked by hand, by label, by a
+  future start date, by an open dependency, or because its parent is.
+  Lists show active items unless you ask for more.
+- Labels are free-form and user-defined (`get_profile` lists them); their
+  meaning is in the workflow section below, not in Marvin.
 
 Reads come from a local mirror refreshed at most once a minute; call
 `sync_marvin` if the user says they just changed something in Marvin.
 Writes are rate-limited (about one per 3 seconds); for bulk edits go item by
 item and tell the user it takes a moment rather than stopping.
-Prefer `search_tasks` for any filtering question; use `get_task` before editing
+Use `search` for any "which items…" question; use `get_task` before editing
 so you see the current state. Never guess ids: resolve names via
 `get_structure` or a search first.
 """
@@ -138,43 +146,10 @@ def instructions_for(workflow: Workflow) -> str:
 
 
 # --- date helpers ---------------------------------------------------------------------
-def today() -> date:
-    """Local date (the server runs on the user's machine)."""
-    return date.today()  # noqa: DTZ011
-
-
 def tz_offset_minutes() -> int:
     """Local UTC offset in minutes, the sign Marvin expects (Pacific = -480)."""
     offset = datetime.now().astimezone().utcoffset() or timedelta(0)
     return int(offset.total_seconds() // 60)
-
-
-def parse_day(value: str, *, base: date | None = None) -> date:  # noqa: PLR0911
-    """Accept ``YYYY-MM-DD`` or a few relative words."""
-    base = base or today()
-    word = value.strip().casefold()
-    match word:
-        case "today":
-            return base
-        case "tomorrow":
-            return base + timedelta(days=1)
-        case "yesterday":
-            return base - timedelta(days=1)
-        case "week" | "this-week" | "this week" | "end-of-week":
-            return base + timedelta(days=6 - base.weekday())
-        case "next-week" | "next week":
-            return base + timedelta(days=13 - base.weekday())
-        case "month" | "this-month" | "this month":
-            first_next = (base.replace(day=1) + timedelta(days=32)).replace(day=1)
-            return first_next - timedelta(days=1)
-        case _:
-            try:
-                return date.fromisoformat(word)
-            except ValueError as exc:
-                raise MarvinError(
-                    f"{value!r} is not a date: use YYYY-MM-DD, or today/tomorrow/"
-                    "yesterday/week/next-week/month"
-                ) from exc
 
 
 def _opt_day(value: str | None) -> str | None:
@@ -200,60 +175,37 @@ def _compact(obj: JsonObj) -> JsonObj:
 
 
 # --- rendering ------------------------------------------------------------------------
-def task_summary(mirror: Mirror, task: Task) -> ItemSummary:
-    """One-line-ish view of a task, with ids resolved to names."""
-    labels = {lb.id: lb.title for lb in mirror.labels()}
-    note = (task.note or "").strip()
-    subtasks = list(task.subtasks.values())
+def summary(lens: Lens, item: Task | Category) -> ItemSummary:
+    """One-line-ish view of a task or project, with ids resolved to names."""
+    note = (item.note or "").strip()
+    subtasks = list(item.subtasks.values()) if isinstance(item, Task) else []
+    reasons = [] if item.done else lens.backburner_reasons(item)
     return ItemSummary(
-        id=task.id,
-        title=task.title,
-        type="task",
-        parent=" > ".join(mirror.path(task.parent_id)),
-        labels=[labels.get(i, i) for i in task.label_ids],
-        do_date=task.day if task.day != INBOX else None,
-        due_date=task.due_date,
-        end_date=task.end_date,
-        start_date=task.start_date,
-        planned_week=task.planned_week,
-        planned_month=task.planned_month,
-        estimate_min=task.estimate_minutes,
-        importance=task.star_level,
-        frog=task.frog_level,
-        backburner=task.backburner,
-        done=task.done,
-        recurring=task.recurring,
-        tracking=task.is_tracking,
+        id=item.id,
+        title=item.title,
+        type=lens.kind(item),
+        parent=lens.path(item.parent_id),
+        labels=lens.labels(item),
+        do_date=item.day if item.day != INBOX else None,
+        due_date=item.due_date,
+        end_date=item.end_date,
+        start_date=item.start_date,
+        planned_week=item.planned_week,
+        planned_month=item.planned_month,
+        estimate_min=item.estimate_minutes,
+        importance=lens.importance(item),
+        frog=item.frog_level,
+        backburner=bool(reasons),
+        why_backburner=reasons,
+        done=item.done,
+        recurring=item.recurring,
+        tracking=isinstance(item, Task) and item.is_tracking,
         subtasks=f"{sum(s.done for s in subtasks)}/{len(subtasks)}"
         if subtasks
         else None,
         note_preview=note[:NOTE_PREVIEW] + ("…" if len(note) > NOTE_PREVIEW else "")
         if note
         else None,
-    )
-
-
-def item_summary(mirror: Mirror, cat: Category) -> ItemSummary:
-    """Summary of a project/category in the same shape as a task."""
-    labels = {lb.id: lb.title for lb in mirror.labels()}
-    note = (cat.note or "").strip()
-    return ItemSummary(
-        id=cat.id,
-        title=cat.title,
-        type=cat.type,
-        parent=" > ".join(mirror.path(cat.parent_id)),
-        labels=[labels.get(i, i) for i in cat.label_ids],
-        do_date=cat.day if cat.day != INBOX else None,
-        due_date=cat.due_date,
-        end_date=cat.end_date,
-        start_date=cat.start_date,
-        planned_week=cat.planned_week,
-        planned_month=cat.planned_month,
-        estimate_min=cat.estimate_minutes,
-        frog=cat.frog_level,
-        backburner=cat.backburner,
-        done=cat.done,
-        note_preview=note[:NOTE_PREVIEW] if note else None,
     )
 
 
@@ -265,14 +217,15 @@ def _other_fields(extra: JsonObj | None) -> JsonObj:
     }
 
 
-def task_detail(mirror: Mirror, task: Task) -> ItemDetail:
+def task_detail(lens: Lens, task: Task) -> ItemDetail:
     """Everything about a task, including raw fields we don't model."""
     # dict(model) keeps every field; model_dump() would drop the compacted ones.
-    summary = dict(task_summary(mirror, task))
-    summary.pop("note_preview", None)
+    base = dict(summary(lens, task))
+    base.pop("note_preview", None)
+    docs = lens.mirror.docs
     return ItemDetail.model_validate(
         {
-            **summary,
+            **base,
             "parent_id": task.parent_id,
             "note": task.note,
             "review_date": task.review_date,
@@ -283,7 +236,7 @@ def task_detail(mirror: Mirror, task: Task) -> ItemDetail:
                 for s in sorted(task.subtasks.values(), key=lambda s: s.rank)
             ],
             "depends_on": [
-                str(mirror.docs.get(i, {}).get("title", i)) for i in task.depends_on
+                str(docs.get(i, {}).get("title", i)) for i in task.depends_on
             ],
             "minutes_tracked": task.duration / MS_PER_MINUTE if task.duration else None,
             "created_at": _iso(task.created_at),
@@ -294,24 +247,28 @@ def task_detail(mirror: Mirror, task: Task) -> ItemDetail:
     )
 
 
-def project_detail(mirror: Mirror, cat: Category) -> ItemDetail:
+def project_detail(lens: Lens, cat: Category) -> ItemDetail:
     """Everything about a project or category, including its open children."""
-    kids = [c for c in mirror.categories() if c.parent_id == cat.id and not c.done]
+    mirror = lens.mirror
+    kids = [c for c in lens.categories.values() if c.parent_id == cat.id and not c.done]
     tasks = mirror.search(TaskFilter(parent_id=cat.id, include_descendants=False))
-    summary = dict(item_summary(mirror, cat))
-    summary.pop("note_preview", None)
+    base = dict(summary(lens, cat))
+    base.pop("note_preview", None)
     return ItemDetail.model_validate(
         {
-            **summary,
+            **base,
             "parent_id": cat.parent_id,
             "note": cat.note,
             "review_date": cat.review_date,
             "priority": cat.priority,
+            "depends_on": [
+                str(mirror.docs.get(i, {}).get("title", i)) for i in cat.depends_on
+            ],
             "subprojects": [
                 ItemRef(id=c.id, title=c.title, type=c.type)
                 for c in sorted(kids, key=lambda c: c.rank)
             ],
-            "open_tasks": [task_summary(mirror, t) for t in tasks],
+            "open_tasks": [summary(lens, t) for t in tasks],
             "created_at": _iso(cat.created_at),
             "updated_at": _iso(cat.updated_at),
             "other_fields": _other_fields(cat.model_extra),
@@ -319,7 +276,17 @@ def project_detail(mirror: Mirror, cat: Category) -> ItemDetail:
     )
 
 
-def _task_list(mirror: Mirror, tasks: list[Task], limit: int) -> TaskList:
+def _task_list(
+    lens: Lens, tasks: list[Task], limit: int, *, include_backburner: bool
+) -> TaskList:
+    """Page ``tasks``, without those that are themselves on the Backburner.
+
+    Only an item's own causes count here, not its containers': the caller asked
+    for this container, so what is above it should not empty the list.
+    """
+    everything = len(tasks)
+    if not include_backburner:
+        tasks = [t for t in tasks if not lens.own_reasons(t)]
     truncated = (
         f"showing {limit} of {len(tasks)}; narrow the filter or raise limit"
         if len(tasks) > limit
@@ -327,53 +294,78 @@ def _task_list(mirror: Mirror, tasks: list[Task], limit: int) -> TaskList:
     )
     return TaskList(
         count=len(tasks),
-        tasks=[task_summary(mirror, t) for t in tasks[:limit]],
+        tasks=[summary(lens, t) for t in tasks[:limit]],
         truncated=truncated,
+        backburner_hidden=everything - len(tasks),
     )
 
 
-def structure(mirror: Mirror, *, include_done: bool = False) -> Structure:
-    """Category/project tree with open-task counts, labels by group, strategies.
+def structure(
+    lens: Lens,
+    *,
+    root: str = ROOT,
+    depth: int = 2,
+    include_done: bool = False,
+    include_backburner: bool = False,
+) -> Structure:
+    """Categories and projects below ``root`` with open-task counts.
 
-    Done projects, and everything nested in them, are left out unless
-    ``include_done``: a long-lived account has far more of them than open ones.
+    Done projects and Backburner containers, and everything nested in them, are
+    left out unless asked for: a long-lived account has far more of them than
+    active ones.
     """
-    open_counts: dict[str, int] = {}
-    for task in mirror.tasks():
-        if not task.done:
-            open_counts[task.parent_id] = open_counts.get(task.parent_id, 0) + 1
-    children: dict[str, list[Category]] = {}
-    hidden = 0
-    for cat in mirror.categories():
-        if cat.is_project and cat.done and not include_done:
-            hidden += 1
-            continue
-        children.setdefault(cat.parent_id, []).append(cat)
+    found = build_tree(
+        lens,
+        root=root,
+        depth=depth,
+        include_done=include_done,
+        include_backburner=include_backburner,
+    )
 
-    def node(cat: Category) -> TreeNode:
-        kids = sorted(children.get(cat.id, []), key=lambda c: c.rank)
+    def node(branch: Branch) -> TreeNode:
+        cat = branch.item
+        project = cat.is_project
         return TreeNode(
             id=cat.id,
             title=cat.title,
             type=cat.type,
-            open_tasks=open_counts.get(cat.id, 0),
-            do_date=cat.day if cat.is_project and cat.day != INBOX else None,
-            due_date=cat.due_date if cat.is_project else None,
-            done=cat.done if cat.is_project else False,
-            children=[node(c) for c in kids],
+            tasks=branch.tasks,
+            tasks_below=branch.tasks_below
+            if branch.tasks_below != branch.tasks
+            else None,
+            done_tasks_below=branch.done_tasks_below if include_done else None,
+            importance=lens.importance(cat),
+            do_date=cat.day if project and cat.day != INBOX else None,
+            due_date=cat.due_date if project else None,
+            done=cat.done if project else False,
+            backburner=bool(lens.backburner_reasons(cat)),
+            more_categories=branch.more_categories,
+            more_projects=branch.more_projects,
+            children=[node(b) for b in branch.children],
         )
 
+    top = root == ROOT
+    return Structure(
+        root="Master List" if top else lens.path(root),
+        depth=depth,
+        tasks=found.tasks,
+        inbox_tasks=found.inbox_tasks if top else None,
+        tree=[node(b) for b in found.branches],
+        done_projects_hidden=found.done_projects_hidden,
+        backburner_hidden=found.backburner_hidden,
+    )
+
+
+def profile(lens: Lens) -> Profile:
+    """Labels by group, Backburner labels, strategies in use, mirror state."""
+    mirror = lens.mirror
     groups = {g.id: g for g in mirror.label_groups()}
     by_group: dict[str | None, list[LabelOut]] = {}
     for label in mirror.labels():
         by_group.setdefault(label.group_id, []).append(
             LabelOut(id=label.id, title=label.title, hidden=label.is_hidden)
         )
-    roots = sorted(children.get("root", []), key=lambda c: c.rank)
-    return Structure(
-        inbox_open_tasks=open_counts.get(INBOX, 0),
-        tree=[node(c) for c in roots],
-        done_projects_hidden=hidden,
+    return Profile(
         labels=[
             LabelGroupOut(
                 group=groups[gid].title if gid in groups else None,
@@ -382,9 +374,41 @@ def structure(mirror: Mirror, *, include_done: bool = False) -> Structure:
             )
             for gid, items in by_group.items()
         ],
+        backburner_labels=sorted(
+            lens.label_titles.get(i, i) for i in lens.backburner_label_ids
+        ),
         enabled_strategies=mirror.enabled_strategies(),
         mirror=MirrorInfo(documents=len(mirror.docs), age_seconds=round(mirror.age)),
     )
+
+
+SEARCH_DOC = f"""\
+Find tasks and projects. Use `text`, `where`, or both.
+
+`text`: words looked up in titles, notes and subtask titles, best match first
+(a word in the title beats one in a note). Every word must appear, unless
+match="any", which ranks by how many do: pass synonyms and translations then.
+
+`where`: a filter expression over these fields:
+{field_help()}.
+Operators: == != < <= > >= in, and / or / not, parentheses.
+Dates: today, tomorrow, yesterday, week_end, next_week_end, month_end,
+date("YYYY-MM-DD"), days(n). Under a container: under("name or id").
+Text ignores case; an unset field is None and never passes < or >.
+
+Examples:
+  importance == 3 and do_date == tomorrow
+  "errand" in labels and estimate_min <= 30 and under("Home")
+  due_date <= today + days(7) or importance >= 2
+  not labels and estimate_min == None
+  kind == "project" and has_dependency
+
+Done and Backburner are two separate switches. By default neither done items
+nor items on the Backburner are returned; include_done / include_backburner
+add them. A `where` that tests done, or a Backburner cause (has_dependency,
+start_date…), turns that switch on. The result counts what each left out.
+Events and recurring-task templates are not searched.
+"""
 
 
 # --- the server -----------------------------------------------------------------------
@@ -438,8 +462,8 @@ def create_server(
 
     @mcp.resource("marvin://structure", mime_type="application/json")
     async def structure_resource() -> Structure:
-        """Category/project tree, labels, and enabled strategies."""
-        return structure(await fresh())
+        """Top two levels of the category/project tree, with open-task counts."""
+        return structure(Lens(await fresh()))
 
     @mcp.prompt()
     def triage_inbox() -> str:
@@ -470,137 +494,168 @@ def create_server(
 
     @mcp.tool()
     async def get_structure(
+        root: Annotated[
+            str, Field(description="category/project id or name; default: the top")
+        ] = ROOT,
+        depth: Annotated[int, Field(ge=1, le=8, description="levels to list")] = 2,
         include_done: Annotated[
-            bool, Field(description="also list done projects (can be many)")
+            bool, Field(description="also list done projects and done-task counts")
+        ] = False,
+        include_backburner: Annotated[
+            bool, Field(description="also list containers on the Backburner")
         ] = False,
     ) -> Structure:
-        """Category/project tree with ids and open-task counts, labels by group, strategies in use.
+        """Categories and projects below a root, with ids and open-task counts. No tasks.
 
-        Call this once at the start of a session; it is how you map names to ids.
-        Done projects are left out unless `include_done`.
+        Call it once at the start of a session to map names to ids, then again
+        with `root` set to go deeper: a node at the last level says how many
+        categories and projects are below it.
         """
-        return structure(await fresh(), include_done=include_done)
+        m = await fresh()
+        return structure(
+            Lens(m),
+            root=m.resolve_parent(root),
+            depth=depth,
+            include_done=include_done,
+            include_backburner=include_backburner,
+        )
 
     @mcp.tool()
-    async def list_inbox(limit: int = 50) -> TaskList:
+    async def get_profile() -> Profile:
+        """Labels by group (and which ones send items to the Backburner), strategies in use, mirror state."""
+        return profile(Lens(await fresh()))
+
+    @mcp.tool()
+    async def list_inbox(
+        limit: int = 50,
+        include_backburner: Annotated[
+            bool, Field(description="also tasks on the Backburner")
+        ] = False,
+    ) -> TaskList:
         """Open tasks in the Inbox (not filed in any category/project), oldest first."""
         m = await fresh()
         tasks = m.search(TaskFilter(parent_id=INBOX, include_descendants=False))
         tasks.sort(key=lambda t: t.created_at or 0)
-        return _task_list(m, tasks, limit)
+        return _task_list(Lens(m), tasks, limit, include_backburner=include_backburner)
 
     @mcp.tool()
-    async def list_today(day: str = "today") -> DayView:
+    async def list_today(
+        day: str = "today",
+        include_backburner: Annotated[
+            bool, Field(description="also items on the Backburner")
+        ] = True,
+    ) -> DayView:
         """What's on for a day: do date that day, do date earlier but not done, due by then.
+
+        Items on the Backburner are listed too, as a date on them is a decision
+        to deal with them; include_backburner=false leaves them out.
 
         Args:
             day: YYYY-MM-DD or today/tomorrow/yesterday.
+            include_backburner: false to leave Backburner items out.
         """
         m = await fresh()
+        lens = Lens(m)
         d = parse_day(day)
+        hidden = 0
+
+        def rows(tasks: list[Task]) -> list[ItemSummary]:
+            nonlocal hidden
+            kept = [
+                t for t in tasks if include_backburner or not lens.backburner_reasons(t)
+            ]
+            hidden += len(tasks) - len(kept)
+            return [summary(lens, t) for t in kept]
+
         return DayView(
             date=d.isoformat(),
-            scheduled=[
-                task_summary(m, t) for t in m.search(TaskFilter(day_from=d, day_to=d))
-            ],
-            scheduled_earlier_not_done=[
-                task_summary(m, t)
-                for t in m.search(TaskFilter(day_to=d - timedelta(days=1)))
-            ],
-            due_by_then=[task_summary(m, t) for t in m.search(TaskFilter(due_by=d))],
+            scheduled=rows(m.search(TaskFilter(day_from=d, day_to=d))),
+            scheduled_earlier_not_done=rows(
+                m.search(TaskFilter(day_to=d - timedelta(days=1)))
+            ),
+            due_by_then=rows(m.search(TaskFilter(due_by=d))),
+            backburner_hidden=hidden,
         )
 
-    @mcp.tool()
-    async def list_due(by: str = "week", limit: int = 100) -> DueList:
-        """Open tasks with a Due date on or before a day (default: end of this week).
-
-        Args:
-            by: YYYY-MM-DD, today, tomorrow, week, next-week, month.
-            limit: Maximum number of tasks to return.
-        """
-        m = await fresh()
-        d = parse_day(by)
-        tasks = m.search(TaskFilter(due_by=d))
-        tasks.sort(key=lambda t: (t.due or date.max, t.title))
-        page = _task_list(m, tasks, limit)
-        return DueList(
-            by=d.isoformat(),
-            count=page.count,
-            tasks=page.tasks,
-            truncated=page.truncated,
-        )
-
-    @mcp.tool()
-    async def search_tasks(
+    @mcp.tool(description=SEARCH_DOC)
+    async def search(
         text: Annotated[
-            str | None, Field(description="substring of title or note")
+            str | None, Field(description='words to look for; "quote a phrase"')
         ] = None,
-        parent: Annotated[
-            str | None, Field(description="project/category id, name, or 'inbox'")
+        where: Annotated[
+            str | None, Field(description="filter expression, see the description")
         ] = None,
-        include_subprojects: bool = True,
-        labels: Annotated[
-            list[str] | None, Field(description="label names or ids; all must match")
+        kinds: Annotated[
+            list[Kind] | None,
+            Field(description="task, project, category; default task and project"),
         ] = None,
-        scheduled_from: Annotated[
-            str | None, Field(description="do date >= (YYYY-MM-DD or today…)")
+        include_done: Annotated[
+            bool | None, Field(description="also done items; default: see above")
         ] = None,
-        scheduled_to: Annotated[
-            str | None, Field(description="do date <= (YYYY-MM-DD or today…)")
+        include_backburner: Annotated[
+            bool | None,
+            Field(description="also items on the Backburner; default: see above"),
         ] = None,
-        unscheduled: Annotated[
-            bool | None, Field(description="True = no do date")
+        match: Annotated[
+            Literal["all", "any"], Field(description="how many `text` words must hit")
+        ] = "all",
+        sort: Annotated[
+            str | None,
+            Field(description="a field name, -name for descending; default: best"),
         ] = None,
-        due_by: Annotated[
-            str | None, Field(description="due date <= (YYYY-MM-DD, week, month…)")
-        ] = None,
-        has_due_date: bool | None = None,
-        end_by: Annotated[
-            str | None, Field(description="end date <= (YYYY-MM-DD, week, month…)")
-        ] = None,
-        min_minutes: Annotated[
-            float | None, Field(description="duration estimate >=")
-        ] = None,
-        max_minutes: Annotated[
-            float | None, Field(description="duration estimate <=")
-        ] = None,
-        has_estimate: bool | None = None,
-        important: Annotated[
-            bool | None, Field(description="has any importance star")
-        ] = None,
-        frogged: bool | None = None,
-        backburner: bool | None = None,
-        done: Annotated[
-            bool | None, Field(description="False (default) = open only")
+        limit: Annotated[int, Field(ge=1, le=MAX_RESULTS)] = 30,
+        offset: Annotated[int, Field(ge=0)] = 0,
+        brief: Annotated[
+            bool, Field(description="only id, title, parent: for wide scans")
         ] = False,
-        limit: int = 50,
-    ) -> TaskList:
-        """Find tasks by any combination of filters (all ANDead). Unset filters are ignored.
-
-        This is the tool for "what can I do in 5 minutes", "everything tagged X",
-        "what's scheduled this week in project Y", etc.
-        """
-        m = await fresh()
-        flt = TaskFilter(
+    ) -> SearchResult:
+        lens = Lens(await fresh())
+        hits, scope = run_search(
+            lens,
             text=text,
-            parent_id=m.resolve_parent(parent) if parent else None,
-            include_descendants=include_subprojects,
-            label_ids=[m.resolve_label(lb).id for lb in labels] if labels else None,
-            day_from=parse_day(scheduled_from) if scheduled_from else None,
-            day_to=parse_day(scheduled_to) if scheduled_to else None,
-            unscheduled=unscheduled,
-            due_by=parse_day(due_by) if due_by else None,
-            has_due_date=has_due_date,
-            end_by=parse_day(end_by) if end_by else None,
-            min_minutes=min_minutes,
-            max_minutes=max_minutes,
-            has_estimate=has_estimate,
-            starred=important,
-            frogged=frogged,
-            backburner=backburner,
-            done=done,
+            where=where,
+            kinds=set(kinds) if kinds else None,
+            include_done=include_done,
+            include_backburner=include_backburner,
+            match=match,
+            sort=sort,
         )
-        return _task_list(m, m.search(flt), min(limit, MAX_RESULTS))
+        page = hits[offset : offset + limit]
+        items: list[SearchHit | BriefHit] = []
+        for hit in page:
+            row = summary(lens, hit.item)
+            if brief:
+                items.append(
+                    BriefHit(
+                        id=row.id,
+                        title=row.title,
+                        type=row.type,
+                        parent=row.parent,
+                        done=row.done,
+                        backburner=row.backburner,
+                        matched_in=hit.matched_in,
+                    )
+                )
+            else:
+                items.append(
+                    SearchHit.model_validate(
+                        {
+                            **dict(row),
+                            "matched_in": hit.matched_in,
+                            "snippet": hit.snippet,
+                        }
+                    )
+                )
+        more = offset + limit < len(hits)
+        return SearchResult(
+            count=len(hits),
+            include_done=scope.include_done,
+            include_backburner=scope.include_backburner,
+            done_hidden=scope.done_hidden,
+            backburner_hidden=scope.backburner_hidden,
+            items=items,
+            next_offset=offset + limit if more else None,
+        )
 
     @mcp.tool()
     async def get_task(
@@ -608,19 +663,33 @@ def create_server(
     ) -> ItemDetail:
         """Full details of one task (note, subtasks, dates, tracking) or project (its open children)."""
         m = await fresh()
+        lens = Lens(m)
         doc = m.docs.get(task_id)
         if doc is not None and doc.get("db") == "Categories":
-            return project_detail(m, m.category(task_id))
-        return task_detail(m, m.task(task_id))
+            return project_detail(lens, m.category(task_id))
+        return task_detail(lens, m.task(task_id))
 
     @mcp.tool()
-    async def list_children(parent: str, limit: int = 100) -> Children:
-        """Open tasks and sub-projects directly inside a project/category (by id or name)."""
+    async def list_children(
+        parent: str,
+        limit: int = 100,
+        include_backburner: Annotated[
+            bool, Field(description="also children on the Backburner")
+        ] = False,
+    ) -> Children:
+        """Open tasks and sub-projects directly inside a project/category (by id or name).
+
+        Leaves out children that are themselves on the Backburner (flag, label,
+        start date, dependency, later step of a sequential project) unless
+        include_backburner; the parent being on the Backburner hides nothing.
+        """
         m = await fresh()
+        lens = Lens(m)
         pid = m.resolve_parent(parent)
-        subs = [c for c in m.categories() if c.parent_id == pid and not c.done]
+        every_sub = [c for c in m.categories() if c.parent_id == pid and not c.done]
+        subs = [c for c in every_sub if include_backburner or not lens.own_reasons(c)]
         tasks = m.search(TaskFilter(parent_id=pid, include_descendants=False))
-        page = _task_list(m, tasks, limit)
+        page = _task_list(lens, tasks, limit, include_backburner=include_backburner)
         return Children(
             parent=" > ".join(m.path(pid)),
             subprojects=[
@@ -630,6 +699,7 @@ def create_server(
             count=page.count,
             tasks=page.tasks,
             truncated=page.truncated,
+            backburner_hidden=page.backburner_hidden + len(every_sub) - len(subs),
         )
 
     # --- write tools ---------------------------------------------------------------
@@ -826,7 +896,13 @@ def create_server(
                 f"{old_text}\n\n{append_note}" if old_text else append_note
             )
         if importance is not None:
-            changes["isStarred"] = importance or False
+            if current.get("db") != "Categories":
+                changes["isStarred"] = importance or False
+            elif current.get("type") == "project":
+                # Projects keep their stars in `priority`, not `isStarred`.
+                changes["priority"] = STARS_PRIORITY.get(importance)
+            else:
+                raise MarvinError("a category has no importance; only its projects")
         if frog is not None:
             changes["isFrogged"] = frog or False
         if backburner is not None:
@@ -842,12 +918,14 @@ def create_server(
             raise MarvinError("nothing to change")
         result = await api.update_doc(item_id, changes)
         mirror.apply(result)
-        summary = (
-            task_summary(m, Task.model_validate(result))
+        item: Task | Category = (
+            Task.model_validate(result)
             if result.get("db") == "Tasks"
-            else item_summary(m, Category.model_validate(result))
+            else Category.model_validate(result)
         )
-        return Updated.model_validate({"updated": sorted(changes), **dict(summary)})
+        return Updated.model_validate(
+            {"updated": sorted(changes), **dict(summary(Lens(m), item))}
+        )
 
     @mcp.tool()
     async def update_subtasks(
@@ -908,7 +986,7 @@ def create_server(
             raise MarvinError("nothing to change")
         result = await api.update_doc(task_id, {"subtasks": subs})
         mirror.apply(result)
-        return task_detail(m, Task.model_validate(result))
+        return task_detail(Lens(m), Task.model_validate(result))
 
     @mcp.tool()
     async def create_category(

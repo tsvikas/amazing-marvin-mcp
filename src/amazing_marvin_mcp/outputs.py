@@ -71,7 +71,13 @@ class ItemSummary(Compact):
     frog: Annotated[
         int, Field(description="Eat the Frog: 1 frog, 2 baby, 3 monster")
     ] = 0
-    backburner: bool = False
+    backburner: Annotated[
+        bool, Field(description="not active, for any of the reasons below")
+    ] = False
+    why_backburner: Annotated[
+        list[str],
+        Field(description="flag, label, start_date, dependency, parent, parent_done"),
+    ] = []
     done: bool = False
     recurring: bool = False
     tracking: Annotated[bool, Field(description="time tracking running now")] = False
@@ -132,12 +138,48 @@ class TaskList(Out):
     count: Annotated[int, Field(description="matches before `limit` was applied")]
     tasks: list[ItemSummary]
     truncated: str | None = None
+    backburner_hidden: Annotated[
+        int, Field(description="left out; pass include_backburner to list them")
+    ] = 0
 
 
-class DueList(TaskList):
-    """Tasks due on or before ``by``."""
+class SearchHit(ItemSummary):
+    """A search result: the item, plus where the text matched."""
 
-    by: str
+    matched_in: Annotated[
+        list[str], Field(description="title, subtasks and/or note")
+    ] = []
+    snippet: Annotated[str | None, Field(description="the note around the match")] = (
+        None
+    )
+
+
+class BriefHit(Compact):
+    """A search result reduced to what identifies it."""
+
+    id: str
+    title: str
+    type: Literal["task", "project", "category"] = "task"
+    parent: str
+    done: bool = False
+    backburner: bool = False
+    matched_in: list[str] = []
+
+
+class SearchResult(Out):
+    """A page of search results, best first."""
+
+    count: Annotated[int, Field(description="all matches, before limit/offset")]
+    include_done: bool
+    include_backburner: bool
+    done_hidden: Annotated[int, Field(description="more matches with include_done")] = 0
+    backburner_hidden: Annotated[
+        int, Field(description="more matches with include_backburner")
+    ] = 0
+    items: list[SearchHit | BriefHit]
+    next_offset: Annotated[
+        int | None, Field(description="pass as `offset` for the next page")
+    ] = None
 
 
 class DayView(Out):
@@ -147,6 +189,9 @@ class DayView(Out):
     scheduled: Annotated[list[ItemSummary], Field(description="do date is that day")]
     scheduled_earlier_not_done: list[ItemSummary]
     due_by_then: list[ItemSummary]
+    backburner_hidden: Annotated[
+        int, Field(description="left out; pass include_backburner to list them")
+    ] = 0
 
 
 class Children(TaskList):
@@ -162,10 +207,24 @@ class TreeNode(Compact):
     id: str
     title: str
     type: Literal["project", "category"]
-    open_tasks: int = 0
+    tasks: Annotated[int, Field(description="open tasks directly inside")] = 0
+    tasks_below: Annotated[
+        int | None, Field(description="open tasks at any depth, when more than tasks")
+    ] = None
+    done_tasks_below: Annotated[
+        int | None, Field(description="only with include_done")
+    ] = None
+    importance: int = 0
     do_date: str | None = None
     due_date: str | None = None
     done: bool = False
+    backburner: bool = False
+    more_categories: Annotated[
+        int, Field(description="categories below, not listed at this depth")
+    ] = 0
+    more_projects: Annotated[
+        int, Field(description="projects below, not listed at this depth")
+    ] = 0
     children: list[TreeNode] = []
 
 
@@ -195,14 +254,31 @@ class MirrorInfo(Out):
 
 
 class Structure(Out):
-    """The user's Marvin layout: tree, labels, enabled strategies."""
+    """Categories and projects below ``root``, down to ``depth`` levels."""
 
-    inbox_open_tasks: int
+    root: Annotated[str, Field(description="path of the root, or 'Master List'")]
+    depth: int
+    tasks: Annotated[int, Field(description="open tasks directly in the root")] = 0
+    inbox_tasks: Annotated[
+        int | None, Field(description="open Inbox tasks (top level only)")
+    ] = None
     tree: list[TreeNode]
     done_projects_hidden: Annotated[
         int, Field(description="done projects left out; pass include_done to list them")
     ] = 0
+    backburner_hidden: Annotated[
+        int,
+        Field(description="Backburner containers left out; pass include_backburner"),
+    ] = 0
+
+
+class Profile(Out):
+    """Labels, the strategies in use and the state of the mirror."""
+
     labels: list[LabelGroupOut]
+    backburner_labels: Annotated[
+        list[str], Field(description="labels that put an item on the Backburner")
+    ] = []
     enabled_strategies: Annotated[
         list[str], Field(description="names from Marvin's Strategies screen")
     ]

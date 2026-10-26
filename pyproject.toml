@@ -49,6 +49,7 @@ dependencies = [
   "platformdirs>=4",
   "pydantic>=2.10",
   "pydantic-settings>=2.6",
+  "simpleeval>=1.0.5",
   "tenacity>=9.2.1",
 ]
 
@@ -204,6 +205,11 @@ enable_error_code = [
 [[tool.mypy.overrides]]
 # pydantic models synthesize `__init__(**data: Any)`
 module = ["amazing_marvin_mcp.models", "amazing_marvin_mcp.outputs", "amazing_marvin_mcp.settings", "conftest", "test_server", "test_live"]
+disallow_any_explicit = false
+
+[[tool.mypy.overrides]]
+# simpleeval takes operators and functions of any arity: `Callable[..., object]`
+module = ["amazing_marvin_mcp.query", "simpleeval"]
 disallow_any_explicit = false
 
 

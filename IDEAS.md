@@ -42,9 +42,8 @@ Measured on the real account, 2026-10-06 (read-only, sync credentials only):
 - Backburner on open tasks: 136 by manual flag, 4 by future start date, 16
   with `dependsOn`; 18 projects/categories carry the flag (inheritance).
   The Backburner labels are in `strategySettings.backburner.backburnerLabels`.
-- The `sequentialProjects` and `nextSteps` strategies are on: check whether
-  "only the first task of a sequential project is actionable" belongs in
-  the "active" filter.
+- The `sequentialProjects` and `nextSteps` strategies are on (sequential
+  projects are handled since 2026-10-12, see below).
 - `STRATEGY_NAMES` covers a minority of the 68 enabled strategy keys; the
   rest show as raw keys.
 - Still to check by eye in a session: importance levels (31 tasks at 3, 6
@@ -68,13 +67,6 @@ Found in the first real session, 2026-10-07:
 
 - **Importance encoding confirmed** against the app: `isStarred` 3 = P1
   (red, three stars), 2 = P2 (orange), 1 = P3 (yellow, one star).
-- **Project importance is invisible.** Projects store it as `priority`
-  (`low`/`mid`/`high` = 1/2/3 stars in the app), not `isStarred`. Summaries
-  show no `importance` for a project and `search_tasks(important=True)`
-  skips them. Map `priority` onto `importance` in both directions.
-- **`search_tasks` does not search projects** (or events, or subtask
-  titles): a project found by name needed a read of the mirror file.
-  Include projects, and say what is not searched in the description.
 - **Reversed Hebrew in a query.** A session searched for a name spelled
   backwards and got 2 wrong hits instead of 31 (8 open). The search is
   correct; the prompt mixed one line typed in logical order with lines
@@ -108,6 +100,11 @@ Found in the first real session, 2026-10-07:
   and the profile documents behind `create_label` rewrite a whole value from
   a mirror up to 60 s old. Fetch the current document (`GET /api/doc`, or a
   forced poll) immediately before such a write.
+- **`update_task` must refuse a category id.** It takes any id, and only
+  `importance` is guarded: a Do date, estimate or Frog passed with a
+  category id is written to the category. Refuse, and point to
+  `update_category` (see "Tools and data"). Sends nothing new, so it needs
+  no live check.
 - **Write journal and undo.** Append every write to a local JSONL file
   (time, tool, document id, before/after of the changed fields). An
   `undo_last`/`undo(id)` tool replays the "before" values through
@@ -133,11 +130,6 @@ Found in the first real session, 2026-10-07:
   document (the journal does), then `/api/doc/delete`, with undo by
   re-creating it. That would be a delete tool, which the working rules
   forbid today; decide whether the journal changes that.
-- **"Active" filter.** `backburner=False` only tests the manual flag. Marvin
-  also backburners by label (Backburner labels in the strategy settings),
-  unfinished dependency (`dependsOn`), future start date and inheritance from
-  a parent. Compute all five in the mirror and add `active_only` to
-  `search_tasks` and `get_structure`.
 - **Instructions are truncated.** Claude Code cuts server instructions and
   each tool description at 2,048 characters
   (`CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH` overrides). The generic text is
@@ -154,14 +146,40 @@ Found in the first real session, 2026-10-07:
   (`get_workflow(section="triage")`), so a session loads only what its task
   needs.
 
+### Read tools redesign (built 2026-10-11): what is left
+
+`get_structure(root, depth, …)`, `get_profile` and `search(text, where, …)`
+replaced the old tree, `search_tasks` and `list_due`; done and Backburner
+are two independent switches, and the Backburner is computed from every one
+of Marvin's causes; projects show their importance. Left over:
+
+- **Check the Backburner against the app.** On the real account 1,167 of the
+  1,247 open items held back only by a parent sit under `Ideas`, which
+  carries the flag. Compare a few of the rest with what the app shows.
+- **Sequential projects**: every open task after the first (by `masterRank`)
+  is on the Backburner with the cause `sequential`, as the help page says.
+  Not verified: the tie-break when two tasks share a `masterRank` (we use the
+  creation time), and sub-projects inside a sequential project (the app does
+  "nested searches" for the first step; we leave sub-projects alone, and the
+  real account has none).
+- **Importance of a project is written as `priority`** by `update_task`
+  (unit-tested). Still owed: the live check on the throwaway account, in
+  particular that `null` clears it, and the cassette re-record.
+  `create_project` still takes `priority` names where `update_task` takes
+  `importance` stars; make them the same.
+- **Week boundaries**: `week_end` assumes a Monday start; read Marvin's
+  week-start setting.
+- **`find_similar(ids, limit)`**: batched nearest neighbours by shared words,
+  weighting rare words more, for going over the whole Inbox in one call.
+  Decide first whether it fits the "no smart tools" rule.
+- **Reversed right-to-left queries**: when `text` is right-to-left, also count
+  matches for its reverse and say so if that finds more.
+- The `where` language is now an API: field renames break saved queries.
+
 ### Stage 2: makes triage good
 
 - **Workflow interview**: a prompt that reads the real structure and labels
   and writes the workflow files with the user (replaces the blank template).
-- **Any-word search**: `search_tasks(words=[…], match="any"|"all")` ranked by
-  number of matching words, for "find similar tasks". `search_tasks` is ours,
-  not Marvin's; the API has no search.
-- **Paging**: `offset` on the list tools (the 200 cap has no way past it).
 - **Merge and split** as documented recipes over existing tools (create,
   update, discard), journaled as one undoable group.
 - **Setup skill** for install, `check`, registration; the user still pastes
@@ -194,11 +212,19 @@ Marvin added these to the help-center API articles too.
 
 ## Tools and data
 
-- **Done history**: `search_tasks(done_from=, done_to=)` on `doneAt` for
-  "what did I finish this week". Data is in the mirror already.
-- **Remaining write fields**: daily/custom sections (`dailySection`,
-  `customSection`), dependencies (`dependsOn`), pinned tasks, snooze, `rank`
-  (ordering within a day/project), subtask reordering and estimates.
+- **`update_category`** (decided 2026-10-12): the line between write tools is
+  category vs. item, not task vs. project. Tasks and projects accept the same
+  fields, so they stay in `update_task`; a category accepts only title,
+  parent, note, color, icon and Backburner. On the real account the 138
+  categories use nothing else (14 notes, 2 Backburner flags; one has a label
+  and one a dependency). `create_category` can set a color that nothing can
+  change afterwards.
+- **Fields `update_task` lacks**: dependencies (`dependsOn`) on tasks and
+  projects; sequential/parallel (`projectType`), color and icon on projects.
+  Each is a new write field: unit test of the setters, then the live check.
+- **Remaining task-only write fields**: daily/custom sections
+  (`dailySection`, `customSection`), pinned tasks, snooze, `rank` (ordering
+  within a day/project), subtask reordering and estimates.
 - **Time tracking**: `start/stop_tracking`. Marvin expects the client to
   maintain `times`/`duration` on stop (`/api/track` only records the event),
   so this needs a small state machine, not a one-liner.
@@ -242,8 +268,6 @@ Not used yet. Worth adding for:
   the user's real (read-only) sync credentials.
 - **Prune** done tasks older than N days from the local mirror file; the
   `_changes` sequence keeps working.
-- **Cap `get_structure`** output (the tree has no `limit`); measure its token
-  cost on a real account.
 - **Push instead of poll**: Marvin webhooks could invalidate the mirror, but
   they need a public endpoint; probably not worth it for a local server.
 
@@ -307,10 +331,6 @@ Not used yet. Worth adding for:
   `todayItems` honours rollover/auto-schedule settings that the mirror-based
   `list_today` reimplements)? Current answer: no, but compare results on a
   real account.
-
-- Is `isStarred` 1/2/3 ↔ P3/P2/P1 right in the current app, or did the
-  Importance Levels rework change the encoding? Verify on a task starred in
-  the UI.
 
 ## Repo chores
 
