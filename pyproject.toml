@@ -321,6 +321,11 @@ flake8-type-checking.runtime-evaluated-base-classes = ["pydantic.BaseModel", "py
 CPY001 = "CPY001"
 
 
+[tool.codespell]
+# a Marvin field name (the time block's calendar id)
+ignore-words-list = "calid"
+
+
 [tool.pylint]
 py-version = "3.13"
 ignore-paths = [".*/_version.py"]

@@ -186,6 +186,21 @@ of Marvin's causes; projects show their importance. Left over:
   the credentials (tooling may not write `.env`).
 - **`show-instructions` command** that prints exactly what the model sees
   (instructions and tool descriptions with lengths), for review.
+- **Shorthand line** for showing a task compactly (asked for in a triage
+  simulation, 2026-10-27):
+  `title #Category @label ~20m +28wd ends:3w due:4w -- note`
+  (`#` category with `_` for spaces, `@` label, `~` duration estimate, `+` do
+  date, `ends:` end date, `due:` due date, `--` then the note). Relative dates count working days
+  (`wd`) or weeks. Could be an output format, and maybe an input format too.
+- **Time blocks** (`taskTime`): tasks the user time-blocks show up in the
+  "Marvin Tasks" Google calendar (`calId`, `calData`, `viaCal` in
+  `other_fields`). Triage needs to reschedule a missed block to a new day
+  *and time*; `update_task` sets only `do_date`. Check the wiki for
+  `taskTime` and whether setting it re-syncs the calendar event. Free slots
+  can come from the user's calendar (Google Calendar connector).
+- **Working days and the labels list in the workflow**: triage counts do
+  dates in working days (Sun-Thu for this user) and picks labels from the
+  real list; the workflow template should have a place for both.
 
 ### Answers from Marvin support (2026-10-06)
 
