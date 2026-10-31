@@ -186,21 +186,25 @@ of Marvin's causes; projects show their importance. Left over:
   the credentials (tooling may not write `.env`).
 - **`show-instructions` command** that prints exactly what the model sees
   (instructions and tool descriptions with lengths), for review.
-- **Shorthand line** for showing a task compactly (asked for in a triage
-  simulation, 2026-10-27):
-  `title #Category @label ~20m +28wd ends:3w due:4w -- note`
-  (`#` category with `_` for spaces, `@` label, `~` duration estimate, `+` do
-  date, `ends:` end date, `due:` due date, `--` then the note). Relative dates count working days
-  (`wd`) or weeks. Could be an output format, and maybe an input format too.
-- **Time blocks** (`taskTime`): tasks the user time-blocks show up in the
+- **Short form** for showing a task compactly, using Marvin's own
+  [shortcut syntax](https://help.amazingmarvin.com/amazing-marvin/using-shortcuts-while-creating-a-task):
+  `title #Category @label ~20m +2026-12-08 due 2026-11-30 --note`. Could be
+  an output format of the tools, and maybe an input format too (`create_task`
+  sends `X-Auto-Complete: false` today, so titles aren't parsed).
+- **Time of day** (`taskTime`): tasks with a time of day show up in the
   "Marvin Tasks" Google calendar (`calId`, `calData`, `viaCal` in
-  `other_fields`). Triage needs to reschedule a missed block to a new day
-  *and time*; `update_task` sets only `do_date`. Check the wiki for
-  `taskTime` and whether setting it re-syncs the calendar event. Free slots
-  can come from the user's calendar (Google Calendar connector).
-- **Working days and the labels list in the workflow**: triage counts do
-  dates in working days (Sun-Thu for this user) and picks labels from the
-  real list; the workflow template should have a place for both.
+  `other_fields`); the user says the sync is two-way. Not to be confused
+  with Marvin's time blocks (reserved time for a type of work). Triage needs
+  to move a missed task to a new day *and time*; `update_task` sets only
+  `do_date`. Check the wiki for `taskTime`. Free slots can come from the
+  user's calendar (Google Calendar connector).
+- **Working days and the labels list in the workflow**: this user gives do
+  dates in working days (Sun–Thu), which Marvin can't compute (no working-day
+  support in the help center or API, checked 2026-10-31), so the workflow
+  carries a conversion rule; triage also picks labels from the real list.
+  The workflow template should have a place for both. A
+  `marvin-triage` repo (`../marvin-triage`) drafts this split: `marvin.md`
+  (Marvin knowledge) vs `workflow/` (the user's conventions).
 
 ### Answers from Marvin support (2026-10-06)
 
