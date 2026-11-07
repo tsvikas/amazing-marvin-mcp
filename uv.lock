@@ -32,6 +32,7 @@ dependencies = [
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "simpleeval" },
     { name = "tenacity" },
 ]
 
@@ -78,6 +79,7 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4" },
     { name = "pydantic", specifier = ">=2.10" },
     { name = "pydantic-settings", specifier = ">=2.6" },
+    { name = "simpleeval", specifier = ">=1.0.5" },
     { name = "tenacity", specifier = ">=9.2.1" },
 ]
 
@@ -2145,6 +2147,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/77/93/f7a02dfe75e6488b1bc71a174bb89d93b7754d7e74601894eac5b3fbe043/rust_just-1.59.0-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:55a22dbd38fb3491d221da1e45184d09460526fae73b845eb9cdfbefcf06822b", size = 2506671, upload-time = "2026-10-16T03:59:52.706Z" },
     { url = "https://files.pythonhosted.org/packages/1e/fb/2d09890ff5fc881f7cbcbf135c4bfa5a73014d718ab4b8611159abc9ff69/rust_just-1.59.0-py3-none-win32.whl", hash = "sha256:509f9e38f7080fb6c971e5ba4ca0572f9075e713b0e3d5105741f782d10fa17f", size = 2171808, upload-time = "2026-10-16T03:59:53.996Z" },
     { url = "https://files.pythonhosted.org/packages/e0/29/81112f1180a156306bf36ab0ffd3e6ec35259ed40cefd8774c24560ce857/rust_just-1.59.0-py3-none-win_amd64.whl", hash = "sha256:75bde89d36bb0c7b35fb9cecefb303f154dc320d4b5b8c832c5ad0bf1904077b", size = 2413475, upload-time = "2026-10-16T03:59:55.345Z" },
+]
+
+[[package]]
+name = "simpleeval"
+version = "1.0.8"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/3e/25326f373871a34e78cac231c0d3c18a0a5c3a80aa4813b50b9f26a5d460/simpleeval-1.0.8.tar.gz", hash = "sha256:b417f869c11f2de034eb919820a825f35d12ce99f63a43971947ce73679eb9ba", size = 31846, upload-time = "2026-09-12T10:16:08.103Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/33/d1ecd9f4f5f272b36ad7b268e307ba0a59c109d8ad134a231cda780baac9/simpleeval-1.0.8-py3-none-any.whl", hash = "sha256:c9c4ff42879ebf0c05f6562cb81031869948916be343bcc950b81fcc081fe9ce", size = 18925, upload-time = "2026-09-12T10:16:06.862Z" },
 ]
 
 [[package]]
